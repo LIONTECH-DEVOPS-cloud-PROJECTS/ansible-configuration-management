@@ -49,7 +49,7 @@
         mode: '0600'
     - name: Ensure admin user has sudo privileges
       copy:
-        content: "{{ prof-admin}} ALL=(ALL) NOPASSWD:ALL"
-        dest: "/etc/sudoers.d/{{ prof-admin}}"
+        content: "{{ username}} ALL=(ALL) NOPASSWD:ALL"
+        dest: "/etc/sudoers.d/{{ username}}"
         mode: '0440'
         validate: 'visudo -cf %s'
