@@ -1,0 +1,21 @@
+# aws_ec2.yml
+plugin: amazon.aws.aws_ec2
+regions:
+  - us-east-1
+  - us-west-2
+filters:
+  instance-state-name: running
+hostnames:
+  - private-ip-address
+  - dns-name
+keyed_groups:
+  - key: tags
+    prefix: tag
+  - key: instance_type
+    prefix: type
+  - key: placement.region
+    prefix: region
+compose:
+  ansible_host: public_ip_address
+  ansible_user: "ec2-user"
+  ansible_ssh_private_key_file: "~/.ssh/sept23.pem"
