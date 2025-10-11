@@ -1,0 +1,72 @@
+# deploy_users_advanced.yml
+---
+- name: Deploy users with SSH keys from files
+  hosts: all
+  become: yes
+
+  vars:
+    users:
+      - username: "devuser"
+        fullname: "Development User"
+        groups: "sudo,developers"
+        key_file: "keys/devuser_rsa.pub"
+        
+      - username: "deployer"
+        fullname: "Deployment User"
+        groups: "developers"
+        key_file: "keys/deployer_rsa.pub"
+        
+      - username: "admin"
+        fullname: "Administrator"
+        groups: "sudo"
+        key_file: "keys/admin_rsa.pub"
+
+  tasks:
+    - name: Ensure developers group exists
+      group:
+        name: developers
+        state: present
+
+    - name: Create users
+      user:
+        name: "{{ item.username }}"
+        comment: "{{ item.fullname }}"
+        groups: "{{ item.groups }}"
+        shell: /bin/bash
+        home: "/home/{{ item.username }}"
+        state: present
+        create_home: yes
+      loop: "{{ users }}"
+
+    - name: Create .ssh directories
+      file:
+        path: "/home/{{ item.username }}/.ssh"
+        state: directory
+        owner: "{{ item.username }}"
+        group: "{{ item.username }}"
+        mode: '0700'
+      loop: "{{ users }}"
+
+    - name: Deploy SSH keys from files
+      authorized_key:
+        user: "{{ item.username }}"
+        state: present
+        key: "{{ lookup('file', item.key_file) }}"
+      loop: "{{ users }}"
+
+    - name: Configure sudo access for privileged users
+      lineinfile:
+        path: /etc/sudoers
+        line: "{{ item.username }} ALL=(ALL) NOPASSWD:ALL"
+        state: present
+        validate: 'visudo -cf %s'
+      loop: "{{ users }}"
+      when: "'sudo' in item.groups"
+
+    - name: Disable password authentication for these users (optional)
+      lineinfile:
+        path: "/etc/ssh/sshd_config"
+        regexp: "^#?PasswordAuthentication"
+        line: "PasswordAuthentication no"
+        state: present
+      notify: restart ssh
