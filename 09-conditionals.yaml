@@ -1,0 +1,72 @@
+# simple_service_example.yml
+---
+- name: Simple service management with conditionals
+  hosts: all
+  become: yes
+  vars:
+    deploy_web: true
+    deploy_db: false
+    server_role: "web"  # Can be 'web', 'db', or 'all'
+
+  tasks:
+    - name: Install Apache (only on web servers)
+      apt:
+        name: apache2
+        state: present
+      when: 
+        - deploy_web | bool
+        - server_role in ['web', 'all']
+
+    - name: Install MySQL (only on database servers)
+      apt:
+        name: mysql-server
+        state: present
+      when: 
+        - deploy_db | bool
+        - server_role in ['db', 'all']
+
+    - name: Start Apache service
+      systemd:
+        name: apache2
+        state: started
+        enabled: yes
+      when: 
+        - deploy_web | bool
+        - server_role in ['web', 'all']
+      notify: enable firewall
+
+    - name: Start MySQL service
+      systemd:
+        name: mysql
+        state: started
+        enabled: yes
+      when: 
+        - deploy_db | bool
+        - server_role in ['db', 'all']
+
+    - name: Create web content
+      copy:
+        content: "<h1>Hello from {{ ansible_hostname }}</h1>"
+        dest: /var/www/html/index.html
+      when: 
+        - deploy_web | bool
+        - server_role in ['web', 'all']
+      notify: restart apache
+
+    - name: Show deployment status
+      debug:
+        msg: "Deployed {{ server_role }} services successfully"
+      when: deploy_web | bool or deploy_db | bool
+
+  handlers:
+    - name: restart apache
+      systemd:
+        name: apache2
+        state: restarted
+
+    - name: enable firewall
+      ufw:
+        rule: allow
+        port: "80"
+        proto: tcp
+      when: ansible_distribution == "Ubuntu"
