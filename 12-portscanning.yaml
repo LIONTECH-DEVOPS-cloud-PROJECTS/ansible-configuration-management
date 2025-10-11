@@ -1,0 +1,38 @@
+# check_open_ports.yml
+---
+- name: Check for open ports on all remote hosts
+  hosts: all
+  become: no
+  gather_facts: false
+
+  vars:
+    # Common ports to check (you can modify this list)
+    common_ports:
+      - 22    # SSH
+      - 80    # HTTP
+      - 443   # HTTPS
+      - 21    # FTP
+      - 25    # SMTP
+      - 53    # DNS
+      - 3306  # MySQL
+      - 5432  # PostgreSQL
+      - 3389  # RDP
+      - 8080  # HTTP Alt
+      - 8443  # HTTPS Alt
+
+  tasks:
+    - name: Check common ports on remote hosts
+      wait_for:
+        host: "{{ ansible_host }}"
+        port: "{{ item }}"
+        timeout: 3
+        state: started
+      loop: "{{ common_ports }}"
+      ignore_errors: yes
+      register: port_scan_results
+
+    - name: Display open ports
+      debug:
+        msg: "Host {{ ansible_host }} - Port {{ item.item }} is OPEN"
+      loop: "{{ port_scan_results.results }}"
+      when: item is succeeded
