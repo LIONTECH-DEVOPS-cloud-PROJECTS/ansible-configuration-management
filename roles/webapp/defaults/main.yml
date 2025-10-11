@@ -1,0 +1,22 @@
+---
+# Web application configuration
+web_app_name: "LionTech"
+web_app_directory: "/var/www/liontech"
+web_user: "apache"
+http_port: 80
+
+# Apache configuration
+apache_service_name: "{{ 'httpd' if ansible_os_family == 'RedHat' else 'apache2' }}"
+apache_config_path: "{{ '/etc/httpd' if ansible_os_family == 'RedHat' else '/etc/apache2' }}"
+apache_main_config: "{{ apache_config_path + '/httpd.conf' if ansible_os_family == 'RedHat' else apache_config_path + '/apache2.conf' }}"
+
+# Application settings
+company_name: "LionTech"
+welcome_message: "Welcome to LionTech - Innovating the Future"
+theme_color: "#2E8B57"  # Sea Green
+secondary_color: "#FF8C00"  # Dark Orange
+
+# Features
+configure_firewall: true
+change_document_root: false
+enable_ssl: false
