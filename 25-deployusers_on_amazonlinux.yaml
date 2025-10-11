@@ -78,7 +78,6 @@
         user: "{{ item.username }}"
         state: present
         key: "{{ lookup('file', item.key_file) }}"
-        exclusive: yes
       loop: "{{ users }}"
 
     - name: Configure sudo access for privileged users (RedHat style)
