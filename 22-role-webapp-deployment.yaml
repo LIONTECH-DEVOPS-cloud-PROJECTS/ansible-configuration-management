@@ -1,0 +1,47 @@
+---
+- name: Deploy LionTech Web Application
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  pre_tasks:
+    - name: Check if supported OS
+      fail:
+        msg: "Unsupported OS: {{ ansible_distribution }}. Supported: Amazon Linux, Ubuntu, CentOS, RedHat"
+      when: ansible_distribution not in ["Amazon", "Ubuntu", "CentOS", "RedHat", "Debian"]
+
+    - name: Update package cache (Amazon Linux/CentOS/RedHat)
+      package:
+        name: "*"
+        state: latest
+      when: ansible_os_family == "RedHat"
+
+    - name: Update package cache (Ubuntu/Debian)
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      when: ansible_os_family == "Debian"
+
+  roles:
+    - role: web-app
+      tags: [web, apache, deploy]
+
+  post_tasks:
+    - name: Display final instructions
+      debug:
+        msg: |
+          🚀 DEPLOYMENT COMPLETE!
+          ======================
+          Your LionTech application is deployed on {{ ansible_hostname }}
+          
+          📍 Access your application:
+          URL: http://{{ ansible_default_ipv4.address }}
+          
+          🔒 For AWS users:
+          Make sure your Security Group allows inbound HTTP traffic (port 80)
+          
+          🐛 Troubleshooting:
+          If you can't access the site, check:
+          1. AWS Security Group rules
+          2. Instance firewall status
+          3. Apache service status: systemctl status {{ apache_service_name }}

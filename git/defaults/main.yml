@@ -1,0 +1,36 @@
+---
+# Git installation configuration
+git_version: "present"  # present, latest, or specific version
+
+# User configuration
+git_users: []
+configure_global_git: false
+
+# Git core configuration
+git_core_config:
+  - key: "core.editor"
+    value: "vim"
+  - key: "core.pager"
+    value: "less -R"
+  - key: "merge.tool"
+    value: "vimdiff"
+  - key: "pull.rebase"
+    value: "false"
+  - key: "init.defaultBranch"
+    value: "main"
+
+# User identity (can be overridden per user)
+git_user_name: "Ansible User"
+git_user_email: "user@example.com"
+
+# Features
+install_additional_tools: true
+enable_git_aliases: true
+enable_git_prompt: true
+enable_color_ui: true
+
+# Git prompt configuration
+git_prompt_show_branch: true
+git_prompt_show_dirty: true
+git_prompt_show_stash: true
+git_prompt_show_untracked: true

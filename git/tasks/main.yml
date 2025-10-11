@@ -1,0 +1,141 @@
+---
+- name: Install Git on RedHat-based systems (yum)
+  package:
+    name: git
+    state: present
+  when: ansible_os_family == "RedHat"
+  tags: install
+
+- name: Install Git on Debian-based systems (apt)
+  package:
+    name: git
+    state: present
+  when: ansible_os_family == "Debian"
+  tags: install
+
+- name: Install Git on Amazon Linux 2/2023
+  package:
+    name: git
+    state: present
+  when: ansible_distribution == "Amazon"
+  tags: install
+
+- name: Install additional Git tools on RedHat-based systems
+  package:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - git-core
+    - git-svn
+    - git-email
+    - git-web
+  when: 
+    - ansible_os_family == "RedHat"
+    - install_additional_tools | default(true)
+  tags: tools
+
+- name: Install additional Git tools on Debian-based systems
+  package:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - git-svn
+    - git-email
+    - gitk
+    - git-gui
+  when: 
+    - ansible_os_family == "Debian"
+    - install_additional_tools | default(true)
+  tags: tools
+
+- name: Create user Git configurations
+  template:
+    src: gitconfig.j2
+    dest: "/home/{{ item }}/.gitconfig"
+    owner: "{{ item }}"
+    group: "{{ item }}"
+    mode: '0644'
+    backup: yes
+  loop: "{{ git_users }}"
+  when: 
+    - git_users is defined
+    - item in ansible_user_id
+  tags: config
+
+- name: Create global Git configuration
+  template:
+    src: gitconfig.j2
+    dest: "/etc/gitconfig"
+    owner: root
+    group: root
+    mode: '0644'
+  when: configure_global_git | default(false)
+  tags: config
+
+- name: Deploy Git prompt enhancement script
+  copy:
+    src: git-prompt.sh
+    dest: "/usr/local/share/git-prompt.sh"
+    owner: root
+    group: root
+    mode: '0644'
+  when: enable_git_prompt | default(true)
+  tags: enhancements
+
+- name: Configure Git aliases for users
+  template:
+    src: git-aliases.j2
+    dest: "/home/{{ item }}/.git-aliases"
+    owner: "{{ item }}"
+    group: "{{ item }}"
+    mode: '0644'
+  loop: "{{ git_users }}"
+  when: 
+    - git_users is defined
+    - enable_git_aliases | default(true)
+  tags: aliases
+
+- name: Source git aliases in user bashrc
+  lineinfile:
+    path: "/home/{{ item }}/.bashrc"
+    line: '[ -f ~/.git-aliases ] && source ~/.git-aliases'
+    create: yes
+  loop: "{{ git_users }}"
+  when: 
+    - git_users is defined
+    - enable_git_aliases | default(true)
+  tags: aliases
+
+- name: Source git prompt in user bashrc
+  lineinfile:
+    path: "/home/{{ item }}/.bashrc"
+    line: '[ -f /usr/local/share/git-prompt.sh ] && source /usr/local/share/git-prompt.sh'
+    create: yes
+  loop: "{{ git_users }}"
+  when: enable_git_prompt | default(true)
+  tags: enhancements
+
+- name: Set Git core configurations
+  command: "git config --global {{ item.key }} '{{ item.value }}'"
+  become: yes
+  become_user: "{{ ansible_user_id }}"
+  loop: "{{ git_core_config }}"
+  when: 
+    - git_core_config is defined
+    - ansible_user_id in git_users
+  tags: config
+
+- name: Verify Git installation
+  command: git --version
+  register: git_version
+  changed_when: false
+  tags: verify
+
+- name: Display Git installation status
+  debug:
+    msg: |
+      ✅ Git successfully installed!
+      Version: {{ git_version.stdout }}
+      Users configured: {{ git_users | default([]) | length }}
+      Global config: {{ configure_global_git | default(false) }}
+  tags: verify
