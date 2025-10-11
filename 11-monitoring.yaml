@@ -1,0 +1,98 @@
+# monitoring_playbook.yml
+---
+- name: Set up monitoring services with conditionals
+  hosts: all
+  become: yes
+  vars:
+    install_monitoring: true
+    monitoring_type: "basic"  # Can be 'basic' or 'advanced'
+    alert_on_failure: true
+
+  tasks:
+    - name: Install basic monitoring tools
+      apt:
+        name:
+          - htop
+          - iotop
+          - nethogs
+        state: present
+      when: 
+        - install_monitoring | bool
+        - monitoring_type == "basic"
+
+    - name: Install advanced monitoring stack
+      apt:
+        name:
+          - prometheus
+          - node-exporter
+          - grafana
+        state: present
+      when: 
+        - install_monitoring | bool
+        - monitoring_type == "advanced"
+      notify: restart monitoring services
+
+    - name: Create monitoring script
+      copy:
+        content: |
+          #!/bin/bash
+          echo "=== System Monitoring ==="
+          echo "Date: $(date)"
+          echo "Uptime: $(uptime)"
+          echo "Load: $(cat /proc/loadavg)"
+          echo "Memory: $(free -h | grep Mem | awk '{print $3 \"/\" $2}')"
+          echo "Disk: $(df -h / | tail -1 | awk '{print $4 \" free\"}')"
+        dest: "/usr/local/bin/system-check.sh"
+        mode: '0755'
+      when: install_monitoring | bool
+
+    - name: Start monitoring services
+      systemd:
+        name: "{{ item }}"
+        state: started
+        enabled: yes
+      loop:
+        - node-exporter
+        - prometheus
+      when: 
+        - install_monitoring | bool
+        - monitoring_type == "advanced"
+
+    - name: Configure service monitoring
+      copy:
+        content: |
+          [Unit]
+          Description=Service Monitor
+          [Service]
+          Type=simple
+          ExecStart=/usr/local/bin/system-check.sh
+          [Install]
+          WantedBy=multi-user.target
+        dest: "/etc/systemd/system/service-monitor.service"
+      when: install_monitoring | bool
+      notify: reload systemd
+
+    - name: Send alert if service fails
+      debug:
+        msg: "ALERT: Service {{ item }} failed to start!"
+      loop:
+        - nginx
+        - mysql
+        - node-exporter
+      when:
+        - alert_on_failure | bool
+        - install_monitoring | bool
+
+  handlers:
+    - name: restart monitoring services
+      systemd:
+        name: "{{ item }}"
+        state: restarted
+      loop:
+        - node-exporter
+        - prometheus
+        - grafana-server
+
+    - name: reload systemd
+      systemd:
+        daemon_reload: yes
