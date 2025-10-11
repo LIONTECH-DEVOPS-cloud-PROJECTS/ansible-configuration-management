@@ -1,190 +1,93 @@
-# aws_security_audit.yml
+# aws_security_audit_simple.yml
 ---
-- name: Comprehensive AWS Security Audit
+- name: Simple AWS Security Audit
   hosts: localhost
   connection: local
-  gather_facts: true  # Changed to true to gather facts
+  gather_facts: false  # Keep false but don't use ansible_date_time
 
   vars:
     aws_region: "us-east-1"
-    audit_report_file: "aws_security_audit_report.txt"
 
   tasks:
-    - name: Create audit report file
-      file:
-        path: "{{ audit_report_file }}"
-        state: touch
-      changed_when: false
-
     - name: Get current timestamp
-      shell: date
-      register: current_timestamp
+      shell: "date"
+      register: current_time
       changed_when: false
-
-    - name: Write audit header
-      lineinfile:
-        path: "{{ audit_report_file }}"
-        line: |
-          ============================================
-          AWS SECURITY AUDIT REPORT
-          ============================================
-          Audit Date: {{ current_timestamp.stdout }}
-          AWS Region: {{ aws_region }}
-          Account ID: {{ aws_account_id.stdout }}
-          
-        create: yes
 
     - name: Get AWS Account ID
       shell: "aws sts get-caller-identity --query 'Account' --output text"
       register: aws_account_id
       changed_when: false
 
-    - name: Check IAM Security
+    - name: Display audit header
+      debug:
+        msg: |
+          ============================================
+          AWS SECURITY AUDIT REPORT
+          ============================================
+          Audit Date: {{ current_time.stdout }}
+          AWS Region: {{ aws_region }}
+          Account ID: {{ aws_account_id.stdout }}
+
+    - name: Basic IAM Security Check
       block:
-        - name: Get IAM users list
-          shell: "aws iam list-users --query 'Users[*].UserName' --output table"
-          register: iam_users
+        - name: Count IAM users
+          shell: "aws iam list-users --query 'length(Users)' --output text"
+          register: iam_user_count
           changed_when: false
 
-        - name: Check for users with console access
-          shell: |
-            aws iam generate-credential-report
-            sleep 5
-            aws iam get-credential-report --query 'Content' --output text | base64 -d > credential_report.csv
-            awk -F, '$4 == "true" {print $1}' credential_report.csv
-          register: console_users
-          changed_when: false
-
-        - name: Check for users without MFA
-          shell: |
-            aws iam get-credential-report --query 'Content' --output text | base64 -d > credential_report.csv
-            awk -F, '$4 == "true" && $7 == "false" {print $1}' credential_report.csv
-          register: users_without_mfa
+        - name: Check root MFA status
+          shell: "aws iam get-account-summary --query 'SummaryMap.AccountMFAEnabled' --output text"
+          register: root_mfa
           changed_when: false
 
       rescue:
-        - name: IAM audit failed
-          debug:
-            msg: "IAM audit failed - check permissions"
+        - debug:
+            msg: "IAM check failed"
 
-    - name: Check EC2 Security
+    - name: Basic EC2 Security Check
       block:
-        - name: Get all EC2 instances
-          shell: "aws ec2 describe-instances --query 'Reservations[*].Instances[*].{InstanceId:InstanceId, State:State.Name, PublicIP:PublicIpAddress, KeyName:KeyName}' --output table"
-          register: ec2_instances
+        - name: Count running instances
+          shell: "aws ec2 describe-instances --filters Name=instance-state-name,Values=running --query 'length(Reservations[].Instances[])' --output text"
+          register: running_instances
           changed_when: false
 
-        - name: Check for unencrypted EBS volumes
-          shell: "aws ec2 describe-volumes --filters Name=encrypted,Values=false --query 'Volumes[*].{VolumeId:VolumeId, Size:Size}' --output table"
-          register: unencrypted_volumes
+        - name: Count unencrypted volumes
+          shell: "aws ec2 describe-volumes --filters Name=encrypted,Values=false --query 'length(Volumes)' --output text"
+          register: unencrypted_volumes_count
           changed_when: false
 
       rescue:
-        - name: EC2 audit failed
-          debug:
-            msg: "EC2 audit failed"
+        - debug:
+            msg: "EC2 check failed"
 
-    - name: Check S3 Security
+    - name: Basic S3 Security Check
       block:
-        - name: List all S3 buckets
-          shell: "aws s3api list-buckets --query 'Buckets[*].Name' --output table"
-          register: s3_buckets
-          changed_when: false
-
-        - name: Check S3 bucket encryption
-          shell: |
-            for bucket in $(aws s3api list-buckets --query 'Buckets[*].Name' --output text); do
-              encryption=$(aws s3api get-bucket-encryption --bucket $bucket --query 'ServerSideEncryptionConfiguration.Rules[0].ApplyServerSideEncryptionByDefault.SSEAlgorithm' --output text 2>/dev/null || echo "No encryption")
-              echo "$bucket: $encryption"
-            done
-          register: bucket_encryption
+        - name: Count S3 buckets
+          shell: "aws s3api list-buckets --query 'length(Buckets)' --output text"
+          register: s3_bucket_count
           changed_when: false
 
       rescue:
-        - name: S3 audit failed
-          debug:
-            msg: "S3 audit failed"
+        - debug:
+            msg: "S3 check failed"
 
-    - name: Check CloudTrail
-      block:
-        - name: Check CloudTrail trails
-          shell: "aws cloudtrail describe-trails --query 'trailList[*].{Name:Name, IsMultiRegion:IsMultiRegion}' --output table"
-          register: cloudtrail_trails
-          changed_when: false
-
-      rescue:
-        - name: CloudTrail audit failed
-          debug:
-            msg: "CloudTrail audit failed"
-
-    - name: Generate Security Audit Report
-      block:
-        - name: Write IAM findings to report
-          lineinfile:
-            path: "{{ audit_report_file }}"
-            line: |
-              
-              === IAM SECURITY FINDINGS ===
-              Total IAM Users: {{ (iam_users.stdout_lines | length) | default('N/A') }}
-              Users with Console Access: {{ (console_users.stdout_lines | length) | default('N/A') }}
-              Users without MFA: {{ (users_without_mfa.stdout_lines | length) | default('N/A') }}
-
-        - name: Write EC2 findings to report
-          lineinfile:
-            path: "{{ audit_report_file }}"
-            line: |
-              
-              === EC2 SECURITY FINDINGS ===
-              Total EC2 Instances: {{ (ec2_instances.stdout_lines | length) | default('N/A') }}
-              Unencrypted EBS Volumes: {{ (unencrypted_volumes.stdout_lines | length) | default('N/A') }}
-
-        - name: Write S3 findings to report
-          lineinfile:
-            path: "{{ audit_report_file }}"
-            line: |
-              
-              === S3 SECURITY FINDINGS ===
-              Total S3 Buckets: {{ (s3_buckets.stdout_lines | length) | default('N/A') }}
-
-      rescue:
-        - name: Report generation failed
-          debug:
-            msg: "Failed to generate full report"
-
-    - name: Display Critical Security Issues
+    - name: Display Security Summary
       debug:
         msg: |
           
-          🔒 AWS SECURITY AUDIT SUMMARY
-          =============================
-          
-          CRITICAL ISSUES TO REVIEW:
-          {% if users_without_mfa.stdout != "" %}
-          🚨 USERS WITHOUT MFA: 
-          {{ users_without_mfa.stdout }}
-          {% else %}
-          ✅ All console users have MFA enabled
-          {% endif %}
-          
-          {% if unencrypted_volumes.stdout != "" %}
-          🔓 UNENCRYPTED EBS VOLUMES: 
-          {{ unencrypted_volumes.stdout }}
-          {% else %}
-          ✅ All EBS volumes are encrypted
-          {% endif %}
-          
-          Full report saved to: {{ audit_report_file }}
-
-    - name: Show audit summary
-      debug:
-        msg: |
-          === AUDIT SUMMARY ===
+          AWS SECURITY SUMMARY
+          ====================
           Account: {{ aws_account_id.stdout }}
-          IAM Users: {{ (iam_users.stdout_lines | length) | default('N/A') }}
-          EC2 Instances: {{ (ec2_instances.stdout_lines | length) | default('N/A') }}
-          S3 Buckets: {{ (s3_buckets.stdout_lines | length) | default('N/A') }}
-          CloudTrail Trails: {{ (cloudtrail_trails.stdout_lines | length) | default('N/A') }}
-
-    - name: Display audit report file location
-      debug:
-        msg: "Complete security audit report saved to: {{ audit_report_file }}"
+          Timestamp: {{ current_time.stdout }}
+          
+          IAM:
+          - Total Users: {{ iam_user_count.stdout }}
+          - Root MFA: {{ "ENABLED" if root_mfa.stdout == "1" else "DISABLED" }}
+          
+          EC2:
+          - Running Instances: {{ running_instances.stdout }}
+          - Unencrypted Volumes: {{ unencrypted_volumes_count.stdout }}
+          
+          S3:
+          - Total Buckets: {{ s3_bucket_count.stdout }}
