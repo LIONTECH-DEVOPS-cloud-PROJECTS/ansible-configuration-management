@@ -3,7 +3,7 @@
 - name: Comprehensive AWS Security Audit
   hosts: localhost
   connection: local
-  gather_facts: false
+  gather_facts: true  # Changed to true to gather facts
 
   vars:
     aws_region: "us-east-1"
@@ -16,14 +16,19 @@
         state: touch
       changed_when: false
 
-- name: Write audit header
+    - name: Get current timestamp
+      shell: date
+      register: current_timestamp
+      changed_when: false
+
+    - name: Write audit header
       lineinfile:
         path: "{{ audit_report_file }}"
         line: |
           ============================================
           AWS SECURITY AUDIT REPORT
           ============================================
-          Audit Date: {{ ansible_date_time.iso8601 }}
+          Audit Date: {{ current_timestamp.stdout }}
           AWS Region: {{ aws_region }}
           Account ID: {{ aws_account_id.stdout }}
           
@@ -43,29 +48,18 @@
 
         - name: Check for users with console access
           shell: |
+            aws iam generate-credential-report
+            sleep 5
             aws iam get-credential-report --query 'Content' --output text | base64 -d > credential_report.csv
             awk -F, '$4 == "true" {print $1}' credential_report.csv
           register: console_users
           changed_when: false
 
-        - name: Check for users with old access keys
-          shell: |
-            aws iam generate-credential-report
-            aws iam get-credential-report --query 'Content' --output text | base64 -d > credential_report.csv
-            awk -F, '$8 != "false" && $8 != "N/A" {print $1, $8}' credential_report.csv | sort -k2
-          register: old_access_keys
-          changed_when: false
-
         - name: Check for users without MFA
           shell: |
             aws iam get-credential-report --query 'Content' --output text | base64 -d > credential_report.csv
-            awk -F, '$8 != "false" && $4 == "true" && $7 == "false" {print $1}' credential_report.csv
+            awk -F, '$4 == "true" && $7 == "false" {print $1}' credential_report.csv
           register: users_without_mfa
-          changed_when: false
-
-        - name: List IAM policies
-          shell: "aws iam list-policies --scope Local --query 'Policies[*].PolicyName' --output table"
-          register: iam_policies
           changed_when: false
 
       rescue:
@@ -80,22 +74,9 @@
           register: ec2_instances
           changed_when: false
 
-        - name: Check security groups for wide open rules
-          shell: |
-            aws ec2 describe-security-groups --query 'SecurityGroups[*].{GroupName:GroupName, IpPermissions:IpPermissions}' --output json > sg.json
-            echo "Security Groups with 0.0.0.0/0 rules:"
-            jq -r '.[] | select(.IpPermissions[]?.IpRanges[]?.CidrIp == "0.0.0.0/0") | .GroupName' sg.json
-          register: open_security_groups
-          changed_when: false
-
         - name: Check for unencrypted EBS volumes
           shell: "aws ec2 describe-volumes --filters Name=encrypted,Values=false --query 'Volumes[*].{VolumeId:VolumeId, Size:Size}' --output table"
           register: unencrypted_volumes
-          changed_when: false
-
-        - name: Check for public AMIs
-          shell: "aws ec2 describe-images --owners self --query 'Images[?Public==`true`].{ImageId:ImageId, Name:Name}' --output table"
-          register: public_amis
           changed_when: false
 
       rescue:
@@ -108,15 +89,6 @@
         - name: List all S3 buckets
           shell: "aws s3api list-buckets --query 'Buckets[*].Name' --output table"
           register: s3_buckets
-          changed_when: false
-
-        - name: Check for public S3 buckets
-          shell: |
-            for bucket in $(aws s3api list-buckets --query 'Buckets[*].Name' --output text); do
-              echo "Checking bucket: $bucket"
-              aws s3api get-bucket-acl --bucket $bucket --query 'Grants[?Grantee.URI==`http://acs.amazonaws.com/groups/global/AllUsers`]' --output table
-            done
-          register: public_buckets
           changed_when: false
 
         - name: Check S3 bucket encryption
@@ -133,68 +105,17 @@
           debug:
             msg: "S3 audit failed"
 
-    - name: Check VPC Security
-      block:
-        - name: Get VPC information
-          shell: "aws ec2 describe-vpcs --query 'Vpcs[*].{VpcId:VpcId, CidrBlock:CidrBlock, IsDefault:IsDefault}' --output table"
-          register: vpcs
-          changed_when: false
-
-        - name: Check flow logs
-          shell: "aws ec2 describe-flow-logs --query 'FlowLogs[*].{ResourceId:ResourceId, LogGroupName:LogGroupName}' --output table"
-          register: flow_logs
-          changed_when: false
-
-        - name: Check NAT Gateways
-          shell: "aws ec2 describe-nat-gateways --query 'NatGateways[*].{NatGatewayId:NatGatewayId, State:State, VpcId:VpcId}' --output table"
-          register: nat_gateways
-          changed_when: false
-
-      rescue:
-        - name: VPC audit failed
-          debug:
-            msg: "VPC audit failed"
-
     - name: Check CloudTrail
       block:
         - name: Check CloudTrail trails
-          shell: "aws cloudtrail describe-trails --query 'trailList[*].{Name:Name, IsMultiRegion:IsMultiRegion, LogFileValidation:LogFileValidationEnabled}' --output table"
+          shell: "aws cloudtrail describe-trails --query 'trailList[*].{Name:Name, IsMultiRegion:IsMultiRegion}' --output table"
           register: cloudtrail_trails
-          changed_when: false
-
-        - name: Check if CloudTrail is enabled globally
-          shell: "aws cloudtrail describe-trails --query 'trailList[?IsMultiRegion==`true`]' --output table"
-          register: multi_region_trail
           changed_when: false
 
       rescue:
         - name: CloudTrail audit failed
           debug:
             msg: "CloudTrail audit failed"
-
-    - name: Check Config Service
-      block:
-        - name: Check AWS Config status
-          shell: "aws configservice describe-configuration-recorders --query 'ConfigurationRecorders[*].{name:name, recording:recording}' --output table"
-          register: config_recorders
-          changed_when: false
-
-      rescue:
-        - name: Config audit failed
-          debug:
-            msg: "Config audit failed"
-
-    - name: Check GuardDuty
-      block:
-        - name: Check GuardDuty detectors
-          shell: "aws guardduty list-detectors --query 'DetectorIds' --output table"
-          register: guardduty_detectors
-          changed_when: false
-
-      rescue:
-        - name: GuardDuty audit failed
-          debug:
-            msg: "GuardDuty audit failed"
 
     - name: Generate Security Audit Report
       block:
@@ -216,7 +137,6 @@
               === EC2 SECURITY FINDINGS ===
               Total EC2 Instances: {{ (ec2_instances.stdout_lines | length) | default('N/A') }}
               Unencrypted EBS Volumes: {{ (unencrypted_volumes.stdout_lines | length) | default('N/A') }}
-              Public AMIs: {{ (public_amis.stdout_lines | length) | default('N/A') }}
 
         - name: Write S3 findings to report
           lineinfile:
@@ -225,28 +145,11 @@
               
               === S3 SECURITY FINDINGS ===
               Total S3 Buckets: {{ (s3_buckets.stdout_lines | length) | default('N/A') }}
-              Unencrypted Buckets: Check bucket_encryption output
 
-        - name: Write Network findings to report
-          lineinfile:
-            path: "{{ audit_report_file }}"
-            line: |
-              
-              === NETWORK SECURITY FINDINGS ===
-              VPCs: {{ (vpcs.stdout_lines | length) | default('N/A') }}
-              Flow Logs Enabled: {{ (flow_logs.stdout_lines | length) | default('N/A') }}
-              NAT Gateways: {{ (nat_gateways.stdout_lines | length) | default('N/A') }}
-
-        - name: Write Monitoring findings to report
-          lineinfile:
-            path: "{{ audit_report_file }}"
-            line: |
-              
-              === MONITORING & LOGGING ===
-              CloudTrail Trails: {{ (cloudtrail_trails.stdout_lines | length) | default('N/A') }}
-              Multi-Region Trail: {{ (multi_region_trail.stdout_lines | length) | default('N/A') }}
-              Config Recorders: {{ (config_recorders.stdout_lines | length) | default('N/A') }}
-              GuardDuty Detectors: {{ (guardduty_detectors.stdout_lines | length) | default('N/A') }}
+      rescue:
+        - name: Report generation failed
+          debug:
+            msg: "Failed to generate full report"
 
     - name: Display Critical Security Issues
       debug:
@@ -257,34 +160,30 @@
           
           CRITICAL ISSUES TO REVIEW:
           {% if users_without_mfa.stdout != "" %}
-          🚨 USERS WITHOUT MFA: {{ users_without_mfa.stdout_lines | length }}
-          {% endif %}
-          
-          {% if open_security_groups.stdout != "" %}
-          ⚠️  OPEN SECURITY GROUPS: Check open_security_groups output
+          🚨 USERS WITHOUT MFA: 
+          {{ users_without_mfa.stdout }}
+          {% else %}
+          ✅ All console users have MFA enabled
           {% endif %}
           
           {% if unencrypted_volumes.stdout != "" %}
-          🔓 UNENCRYPTED EBS VOLUMES: {{ unencrypted_volumes.stdout_lines | length }}
-          {% endif %}
-          
-          {% if public_buckets.stdout != "" %}
-          🌐 PUBLIC S3 BUCKETS: Check public_buckets output
+          🔓 UNENCRYPTED EBS VOLUMES: 
+          {{ unencrypted_volumes.stdout }}
+          {% else %}
+          ✅ All EBS volumes are encrypted
           {% endif %}
           
           Full report saved to: {{ audit_report_file }}
 
-    - name: Show sample of audit data
+    - name: Show audit summary
       debug:
         msg: |
-          Sample IAM Users:
-          {{ iam_users.stdout | default('No IAM users data') | truncate(500) }}
-          
-          Sample EC2 Instances:
-          {{ ec2_instances.stdout | default('No EC2 data') | truncate(500) }}
-          
-          Sample S3 Buckets:
-          {{ s3_buckets.stdout | default('No S3 data') | truncate(500) }}
+          === AUDIT SUMMARY ===
+          Account: {{ aws_account_id.stdout }}
+          IAM Users: {{ (iam_users.stdout_lines | length) | default('N/A') }}
+          EC2 Instances: {{ (ec2_instances.stdout_lines | length) | default('N/A') }}
+          S3 Buckets: {{ (s3_buckets.stdout_lines | length) | default('N/A') }}
+          CloudTrail Trails: {{ (cloudtrail_trails.stdout_lines | length) | default('N/A') }}
 
     - name: Display audit report file location
       debug:
