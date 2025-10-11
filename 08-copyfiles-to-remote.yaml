@@ -1,0 +1,43 @@
+# copy_files.yml
+---
+- name: Copy files from master controller to all servers
+  hosts: all
+  become: yes
+  gather_facts: true
+  
+  tasks:
+    - name: Create directory structure on target servers
+      file:
+        path: "/opt/app_files"
+        state: directory
+        owner: "ubuntu"
+        group: "ubuntu"
+        mode: '0755'
+      
+    - name: Copy single file
+      copy:
+        src: "/home/prof/ansible-configuration-management/inventory.ini"
+        dest: "/opt/inventory.ini"
+        owner: "ubuntu"
+        group: "ubuntu"
+        mode: '0644'
+        backup: yes
+
+    - name: Copy entire directory
+      copy:
+        src: "/home/prof/ansible-configuration-management/configs/"
+        dest: "/opt/app_files/"
+        owner: "ubuntu"
+        group: "ubuntu"
+        mode: '0644'
+        directory_mode: '0755'
+
+    - name: Verify file copies
+      stat:
+        path: "/opt/app_inventory.ini"
+      register: file_stat
+
+    - name: Display copy result
+      debug:
+        msg: "File successfully copied to {{ inventory_hostname }}"
+      when: file_stat.stat.exists
