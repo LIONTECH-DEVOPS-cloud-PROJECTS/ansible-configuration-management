@@ -1,0 +1,104 @@
+# advanced_port_scan.yml
+---
+- name: Advanced port scanning with detailed reporting
+  hosts: all
+  become: no
+  gather_facts: false
+
+  vars:
+    port_ranges:
+      web_ports: [80, 443, 8080, 8443, 3000, 5000]
+      db_ports: [3306, 5432, 27017, 6379, 1433]
+      ssh_ports: [22, 2222, 22222]
+      mail_ports: [25, 110, 143, 465, 587, 993, 995]
+      custom_ports: [21, 23, 53, 123, 161, 389, 636, 3389]
+
+    scan_timeout: 2  # seconds per port
+
+  tasks:
+    - name: Scan web service ports
+      wait_for:
+        host: "{{ ansible_host }}"
+        port: "{{ item }}"
+        timeout: "{{ scan_timeout }}"
+        state: started
+      loop: "{{ port_ranges.web_ports }}"
+      ignore_errors: yes
+      register: web_ports_scan
+
+    - name: Scan database ports
+      wait_for:
+        host: "{{ ansible_host }}"
+        port: "{{ item }}"
+        timeout: "{{ scan_timeout }}"
+        state: started
+      loop: "{{ port_ranges.db_ports }}"
+      ignore_errors: yes
+      register: db_ports_scan
+
+    - name: Scan SSH ports
+      wait_for:
+        host: "{{ ansible_host }}"
+        port: "{{ item }}"
+        timeout: "{{ scan_timeout }}"
+        state: started
+      loop: "{{ port_ranges.ssh_ports }}"
+      ignore_errors: yes
+      register: ssh_ports_scan
+
+    - name: Scan custom ports
+      wait_for:
+        host: "{{ ansible_host }}"
+        port: "{{ item }}"
+        timeout: "{{ scan_timeout }}"
+        state: started
+      loop: "{{ port_ranges.custom_ports }}"
+      ignore_errors: yes
+      register: custom_ports_scan
+
+    - name: Compile all open ports
+      set_fact:
+        open_ports: |
+          {{
+            (web_ports_scan.results | selectattr('is_skipped', 'undefined') | selectattr('failed', 'equalto', false) | map(attribute='item') | list) +
+            (db_ports_scan.results | selectattr('is_skipped', 'undefined') | selectattr('failed', 'equalto', false) | map(attribute='item') | list) +
+            (ssh_ports_scan.results | selectattr('is_skipped', 'undefined') | selectattr('failed', 'equalto', false) | map(attribute='item') | list) +
+            (custom_ports_scan.results | selectattr('is_skipped', 'undefined') | selectattr('failed', 'equalto', false) | map(attribute='item') | list)
+          }}
+
+    - name: Display port scan summary
+      debug:
+        msg: |
+          === PORT SCAN SUMMARY ===
+          Host: {{ ansible_host }}
+          Total open ports: {{ open_ports | length }}
+          Open ports: {{ open_ports | sort }}
+
+    - name: Show detailed port information
+      debug:
+        msg: "Port {{ item }} - {{ lookup('dict', port_descriptions)[item | string] }}"
+      loop: "{{ open_ports }}"
+      when: open_ports | length > 0
+
+  vars:
+    port_descriptions:
+      "22": "SSH"
+      "80": "HTTP"
+      "443": "HTTPS"
+      "21": "FTP"
+      "25": "SMTP"
+      "53": "DNS"
+      "3306": "MySQL"
+      "5432": "PostgreSQL"
+      "3389": "RDP"
+      "8080": "HTTP Alternative"
+      "8443": "HTTPS Alternative"
+      "27017": "MongoDB"
+      "6379": "Redis"
+      "1433": "MSSQL"
+      "110": "POP3"
+      "143": "IMAP"
+      "465": "SMTPS"
+      "587": "SMTP Submission"
+      "993": "IMAPS"
+      "995": "POP3S"

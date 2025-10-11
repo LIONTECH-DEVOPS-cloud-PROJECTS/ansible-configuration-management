@@ -1,0 +1,39 @@
+# quick_port_check.yml
+---
+- name: Quick port availability check
+  hosts: all
+  become: no
+  gather_facts: false
+
+  tasks:
+    - name: Check if SSH port (22) is open
+      wait_for:
+        host: "{{ ansible_host }}"
+        port: 22
+        timeout: 5
+        state: started
+      register: ssh_check
+
+    - name: Check if HTTP port (80) is open
+      wait_for:
+        host: "{{ ansible_host }}"
+        port: 80
+        timeout: 5
+        state: started
+      register: http_check
+
+    - name: Check if HTTPS port (443) is open
+      wait_for:
+        host: "{{ ansible_host }}"
+        port: 443
+        timeout: 5
+        state: started
+      register: https_check
+
+    - name: Display quick port status
+      debug:
+        msg: |
+          QUICK PORT STATUS - {{ ansible_host }}
+          SSH (22):   {{ '✅ OPEN' if ssh_check is succeeded else '❌ CLOSED' }}
+          HTTP (80):  {{ '✅ OPEN' if http_check is succeeded else '❌ CLOSED' }}
+          HTTPS (443): {{ '✅ OPEN' if https_check is succeeded else '❌ CLOSED' }}

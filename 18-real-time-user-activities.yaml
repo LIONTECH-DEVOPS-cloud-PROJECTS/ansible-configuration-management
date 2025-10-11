@@ -1,0 +1,60 @@
+# realtime_user_activity.yml
+---
+- name: Real-time User Activity Snapshot
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Get active user sessions with details
+      shell: |
+        echo "=== Active SSH Sessions ==="
+        who
+        echo
+        echo "=== Detailed User Activity ==="
+        w
+        echo
+        echo "=== Network Connections by User ==="
+        ss -tupn | grep -E "ESTAB" | head -20
+      register: realtime_activity
+      changed_when: false
+
+    - name: Check what commands users are running
+      shell: |
+        ps aux --sort=-%cpu | head -15
+      register: current_commands
+      changed_when: false
+
+    - name: Check for suspicious processes
+      shell: |
+        ps aux | grep -E "(nc |telnet |ssh |scp |wget |curl |python |perl |ruby )" | grep -v grep
+      register: suspicious_processes
+      changed_when: false
+
+    - name: Check open files by users
+      shell: |
+        lsof -u $(who | awk '{print $1}' | sort -u) 2>/dev/null | head -20
+      register: open_files
+      ignore_errors: yes
+      changed_when: false
+
+    - name: Display Real-time Activity
+      debug:
+        msg: |
+          
+          ====================================
+          REAL-TIME ACTIVITY - {{ ansible_hostname }}
+          ====================================
+          {{ realtime_activity.stdout }}
+          
+          === CURRENT COMMANDS ===
+          {{ current_commands.stdout }}
+          
+          {% if suspicious_processes.stdout != "" %}
+          === SUSPICIOUS PROCESSES ===
+          {{ suspicious_processes.stdout }}
+          {% endif %}
+          
+          {% if open_files is succeeded and open_files.stdout != "" %}
+          === OPEN FILES BY USERS ===
+          {{ open_files.stdout }}
+          {% endif %}
