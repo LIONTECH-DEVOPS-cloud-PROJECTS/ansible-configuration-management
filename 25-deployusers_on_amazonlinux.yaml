@@ -9,12 +9,12 @@
       - username: "prof-devuser"
         fullname: "Development User"
         groups: "wheel,developers"  # Changed from 'sudo' to 'wheel' for RedHat
-        key_file: "keys/prof-devuser_rsa.pub"
+        key_file: "keys/admin_rsa.pub"
         
       - username: "deployer"
         fullname: "Deployment User"
         groups: "developers"
-        key_file: "keys/deployer_rsa.pub"
+        key_file: "keys/admin_rsa.pub"
         
       - username: "admin"
         fullname: "Administrator"
