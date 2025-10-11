@@ -16,7 +16,7 @@
         state: touch
       changed_when: false
 
-    - name: Write audit header
+- name: Write audit header
       lineinfile:
         path: "{{ audit_report_file }}"
         line: |
