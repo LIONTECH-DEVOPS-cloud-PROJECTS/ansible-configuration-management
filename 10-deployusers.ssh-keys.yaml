@@ -6,10 +6,10 @@
 
   vars:
     users:
-      - username: "devuser"
+      - username: "prof-devuser"
         fullname: "Development User"
         groups: "sudo,developers"
-        key_file: "keys/devuser_rsa.pub"
+        key_file: "keys/prof-devuser_rsa.pub"
         
       - username: "deployer"
         fullname: "Deployment User"
