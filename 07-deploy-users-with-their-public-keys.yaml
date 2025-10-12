@@ -3,7 +3,7 @@
   hosts: all
   become: yes
   vars:
-    username: "john"
+    username: "walson"
     user_uid: 1020
     user_shell: "/bin/bash"
     # Path to local public key file (relative to playbook or absolute path)
