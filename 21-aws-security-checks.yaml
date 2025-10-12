@@ -1,0 +1,93 @@
+# aws_security_audit_simple.yml
+---
+- name: Simple AWS Security Audit
+  hosts: localhost
+  connection: local
+  gather_facts: false  # Keep false but don't use ansible_date_time
+
+  vars:
+    aws_region: "us-east-1"
+
+  tasks:
+    - name: Get current timestamp
+      shell: "date"
+      register: current_time
+      changed_when: false
+
+    - name: Get AWS Account ID
+      shell: "aws sts get-caller-identity --query 'Account' --output text"
+      register: aws_account_id
+      changed_when: false
+
+    - name: Display audit header
+      debug:
+        msg: |
+          ============================================
+          AWS SECURITY AUDIT REPORT
+          ============================================
+          Audit Date: {{ current_time.stdout }}
+          AWS Region: {{ aws_region }}
+          Account ID: {{ aws_account_id.stdout }}
+
+    - name: Basic IAM Security Check
+      block:
+        - name: Count IAM users
+          shell: "aws iam list-users --query 'length(Users)' --output text"
+          register: iam_user_count
+          changed_when: false
+
+        - name: Check root MFA status
+          shell: "aws iam get-account-summary --query 'SummaryMap.AccountMFAEnabled' --output text"
+          register: root_mfa
+          changed_when: false
+
+      rescue:
+        - debug:
+            msg: "IAM check failed"
+
+    - name: Basic EC2 Security Check
+      block:
+        - name: Count running instances
+          shell: "aws ec2 describe-instances --filters Name=instance-state-name,Values=running --query 'length(Reservations[].Instances[])' --output text"
+          register: running_instances
+          changed_when: false
+
+        - name: Count unencrypted volumes
+          shell: "aws ec2 describe-volumes --filters Name=encrypted,Values=false --query 'length(Volumes)' --output text"
+          register: unencrypted_volumes_count
+          changed_when: false
+
+      rescue:
+        - debug:
+            msg: "EC2 check failed"
+
+    - name: Basic S3 Security Check
+      block:
+        - name: Count S3 buckets
+          shell: "aws s3api list-buckets --query 'length(Buckets)' --output text"
+          register: s3_bucket_count
+          changed_when: false
+
+      rescue:
+        - debug:
+            msg: "S3 check failed"
+
+    - name: Display Security Summary
+      debug:
+        msg: |
+          
+          AWS SECURITY SUMMARY
+          ====================
+          Account: {{ aws_account_id.stdout }}
+          Timestamp: {{ current_time.stdout }}
+          
+          IAM:
+          - Total Users: {{ iam_user_count.stdout }}
+          - Root MFA: {{ "ENABLED" if root_mfa.stdout == "1" else "DISABLED" }}
+          
+          EC2:
+          - Running Instances: {{ running_instances.stdout }}
+          - Unencrypted Volumes: {{ unencrypted_volumes_count.stdout }}
+          
+          S3:
+          - Total Buckets: {{ s3_bucket_count.stdout }}

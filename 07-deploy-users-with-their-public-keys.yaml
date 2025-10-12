@@ -3,7 +3,7 @@
   hosts: all
   become: yes
   vars:
-    username: "walson"
+    username: "john"
     user_uid: 1020
     user_shell: "/bin/bash"
     # Path to local public key file (relative to playbook or absolute path)
@@ -33,12 +33,12 @@
         group: "{{ username }}"
         mode: '0700'
 
-    - name: Read local public key file
-      slurp:
-        src: "{{ public_key_file | expanduser }}"
-      register: public_key_content
-      delegate_to: localhost
-      run_once: true
+    # - name: Read local public key file
+    #   slurp:
+    #     src: "{{ public_key_file | expanduser }}"
+    #   register: public_key_content
+    #   delegate_to: localhost
+    #   run_once: true
 
     - name: Deploy public key to authorized_keys
       copy:
@@ -47,3 +47,9 @@
         owner: "{{ username }}"
         group: "{{ username }}"
         mode: '0600'
+    - name: Ensure admin user has sudo privileges
+      copy:
+        content: "{{ username}} ALL=(ALL) NOPASSWD:ALL"
+        dest: "/etc/sudoers.d/{{ username}}"
+        mode: '0440'
+        validate: 'visudo -cf %s'

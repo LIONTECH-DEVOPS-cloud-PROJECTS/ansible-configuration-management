@@ -1,0 +1,66 @@
+# login_history_analysis.yml
+---
+- name: User Login History Analysis
+  hosts: all
+  become: yes
+
+  vars:
+    analysis_days: 7
+
+  tasks:
+    - name: Get login statistics by user
+      shell: |
+        last -a --since -{{ analysis_days }}days | awk '{print $1}' | sort | uniq -c | sort -nr
+      register: login_stats
+      changed_when: false
+
+    - name: Get login locations (IP addresses)
+      shell: |
+        last -a -i --since -{{ analysis_days }}days | grep -v "0.0.0.0" | awk '{print $3, $NF}' | sort | uniq -c | sort -nr
+      register: login_locations
+      changed_when: false
+
+    - name: Get login times analysis
+      shell: |
+        last -a --since -{{ analysis_days }}days | awk '{print $7}' | grep ":" | sort | uniq -c | sort -nr | head -10
+      register: login_times
+      changed_when: false
+
+    - name: Get session durations
+      shell: |
+        last -a --since -{{ analysis_days }}days | awk '/still logged in/ {next} {print $1, $10}' | grep -v "logged" | head -20
+      register: session_durations
+      changed_when: false
+
+    - name: Analyze failed login patterns
+      shell: |
+        lastb -a --since -{{ analysis_days }}days 2>/dev/null | awk '{print $3, $NF}' | sort | uniq -c | sort -nr | head -10
+      register: failed_login_patterns
+      ignore_errors: yes
+      changed_when: false
+
+    - name: Display Login Analysis Report
+      debug:
+        msg: |
+          
+          ====================================
+          LOGIN HISTORY ANALYSIS ({{ analysis_days }} days)
+          ====================================
+          Host: {{ ansible_hostname }}
+          
+          === LOGIN STATISTICS BY USER ===
+          {{ login_stats.stdout | default('No login data') }}
+          
+          === LOGIN LOCATIONS (IP Addresses) ===
+          {{ login_locations.stdout | default('No location data') }}
+          
+          === MOST COMMON LOGIN TIMES ===
+          {{ login_times.stdout | default('No time data') }}
+          
+          === SESSION DURATIONS ===
+          {{ session_durations.stdout | default('No duration data') }}
+          
+          {% if failed_login_patterns is succeeded %}
+          === FAILED LOGIN PATTERNS ===
+          {{ failed_login_patterns.stdout | default('No failed login data') }}
+          {% endif %}

@@ -1,0 +1,144 @@
+# user_activity_audit.yml
+---
+- name: Comprehensive User Activity Audit
+  hosts: all
+  become: yes
+  gather_facts: true
+
+  vars:
+    audit_days: 30  # Number of days to look back for activity
+
+  tasks:
+    - name: Get current logged in users
+      command: who
+      register: current_users
+      changed_when: false
+
+    - name: Get last login information for all users
+      command: last -a -n 50
+      register: last_logins
+      changed_when: false
+
+    - name: Get failed login attempts
+      command: lastb -a -n 20
+      register: failed_logins
+      ignore_errors: yes  # lastb might not be available or require root
+      changed_when: false
+
+    - name: Check currently running processes by user
+      command: ps aux --sort=-%cpu | head -20
+      register: running_processes
+      changed_when: false
+
+    - name: Get user session information
+      command: w
+      register: user_sessions
+      changed_when: false
+
+    - name: Check recently modified user files
+      command: find /home -type f -mtime -{{ audit_days }} -ls 2>/dev/null | head -30
+      register: recent_user_files
+      changed_when: false
+
+    - name: Check SSH authorized keys for all users
+      shell: |
+        for user in $(ls /home); do
+          if [ -f "/home/$user/.ssh/authorized_keys" ]; then
+            echo "=== User: $user ==="
+            cat "/home/$user/.ssh/authorized_keys"
+            echo
+          fi
+        done
+      register: ssh_authorized_keys
+      changed_when: false
+
+    - name: Check sudo activities from auth log
+      shell: |
+        grep -i sudo /var/log/auth.log | tail -20
+      register: sudo_activities
+      ignore_errors: yes
+      changed_when: false
+
+    - name: Check system login history
+      shell: |
+        grep -E "(Accepted|Failed|session opened)" /var/log/auth.log | tail -30
+      register: auth_log_entries
+      ignore_errors: yes
+      changed_when: false
+
+    - name: Check user account information
+      command: chage -l {{ item }}
+      loop: "{{ ansible_user_id }}"
+      register: user_account_info
+      changed_when: false
+
+    - name: Get system uptime and load
+      command: uptime
+      register: system_uptime
+      changed_when: false
+
+    - name: Check disk space in home directories
+      command: du -sh /home/* 2>/dev/null | sort -hr
+      register: home_disk_usage
+      changed_when: false
+
+    - name: Display User Activity Audit Report
+      debug:
+        msg: |
+          
+          ============================================
+          USER ACTIVITY AUDIT REPORT - {{ ansible_hostname }}
+          ============================================
+          System: {{ ansible_distribution }} {{ ansible_distribution_version }}
+          Audit Date: {{ ansible_date_time.iso8601 }}
+          
+          === SYSTEM OVERVIEW ===
+          Uptime: {{ system_uptime.stdout }}
+          
+          === CURRENTLY LOGGED IN USERS ===
+          {{ current_users.stdout | default('No users logged in') }}
+          
+          === RECENT LOGIN ACTIVITY (Last 50) ===
+          {{ last_logins.stdout | default('No login data available') }}
+          
+          === USER SESSIONS ===
+          {{ user_sessions.stdout | default('No session data available') }}
+
+    - name: Display Security Information
+      debug:
+        msg: |
+          === SECURITY INFORMATION ===
+          {% if failed_logins is succeeded %}
+          Failed Login Attempts:
+          {{ failed_logins.stdout | default('No failed login data') }}
+          {% endif %}
+          
+          {% if sudo_activities is succeeded %}
+          Recent Sudo Activities:
+          {{ sudo_activities.stdout | default('No sudo activities') }}
+          {% endif %}
+          
+          {% if auth_log_entries is succeeded %}
+          Recent Auth Log Entries:
+          {{ auth_log_entries.stdout | default('No auth log entries') }}
+          {% endif %}
+
+    - name: Display User Environment Information
+      debug:
+        msg: |
+          === USER ENVIRONMENT ===
+          Top Processes:
+          {{ running_processes.stdout | default('No process data') }}
+          
+          Home Directory Disk Usage:
+          {{ home_disk_usage.stdout | default('No disk usage data') }}
+          
+          Recent User Files (Last {{ audit_days }} days):
+          {{ recent_user_files.stdout | default('No recent files') }}
+
+    - name: Display SSH Access Information
+      debug:
+        msg: |
+          === SSH ACCESS CONFIGURATION ===
+          Authorized SSH Keys:
+          {{ ssh_authorized_keys.stdout | default('No SSH keys found') }}

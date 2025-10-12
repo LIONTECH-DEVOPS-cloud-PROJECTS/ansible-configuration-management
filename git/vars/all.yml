@@ -1,0 +1,26 @@
+---
+# Git configuration for all servers
+git_users:
+  - ubuntu
+  - ec2-user
+  - centos
+
+git_user_name: "DevOps Team"
+git_user_email: "devops@company.com"
+
+install_additional_tools: true
+enable_git_aliases: true
+enable_git_prompt: true
+enable_color_ui: true
+
+git_core_config:
+  - key: "core.editor"
+    value: "vim"
+  - key: "core.pager"
+    value: "less -R"
+  - key: "pull.rebase"
+    value: "false"
+  - key: "init.defaultBranch"
+    value: "main"
+  - key: "merge.tool"
+    value: "vimdiff"

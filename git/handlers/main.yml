@@ -1,0 +1,6 @@
+---
+- name: reload bashrc
+  command: source ~/.bashrc
+  become: yes
+  become_user: "{{ item }}"
+  loop: "{{ git_users }}"

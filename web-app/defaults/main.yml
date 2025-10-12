@@ -1,0 +1,20 @@
+---
+# Web application configuration
+web_app_name: "LionTech"
+web_app_directory: "/var/www/liontech"
+http_port: 80
+
+# Service names
+apache_service_name: "{{ 'httpd' if ansible_os_family == 'RedHat' else 'apache2' }}"
+
+# User and group settings
+web_user: "{{ 'apache' if ansible_os_family == 'RedHat' else 'www-data' }}"
+web_group: "{{ 'apache' if ansible_os_family == 'RedHat' else 'www-data' }}"
+
+# Application settings
+company_name: "LionTech"
+welcome_message: "Welcome to LionTech - Innovating the Future"
+theme_color: "#2E8B57"
+
+# Features
+configure_firewall: false  # Set to false for AWS environments

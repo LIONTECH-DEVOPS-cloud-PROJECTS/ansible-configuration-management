@@ -1,0 +1,89 @@
+# security_user_monitor.yml
+---
+- name: Security-Focused User Activity Monitoring
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Check for unusual login times (after hours)
+      shell: |
+        last -a | awk '{print $1, $7, $8, $9, $10}' | grep -E "(19:|20:|21:|22:|23:|00:|01:|02:|03:|04:|05:)"
+      register: after_hours_logins
+      changed_when: false
+      ignore_errors: yes
+
+    - name: Check for root logins
+      shell: |
+        last -a root | head -10
+      register: root_logins
+      changed_when: false
+
+    - name: Check for users with empty passwords
+      shell: |
+        getent shadow | awk -F: '($2 == "" || $2 == "!") {print $1}'
+      register: empty_password_users
+      changed_when: false
+
+    - name: Check for users who never logged in
+      shell: |
+        for user in $(getent passwd | cut -d: -f1); do
+          if ! last "$user" | grep -q "$user"; then
+            echo "$user"
+          fi
+        done
+      register: never_logged_in_users
+      changed_when: false
+
+    - name: Check for users without password expiration
+      shell: |
+        getent shadow | awk -F: '($5 == "" || $5 == "99999") {print $1}'
+      register: no_password_expiry
+      changed_when: false
+
+    - name: Check for suspicious cron jobs
+      shell: |
+        for user in $(getent passwd | cut -d: -f1); do
+          echo "=== User: $user ==="
+          crontab -l -u "$user" 2>/dev/null | grep -v "^#"
+        done
+      register: user_cron_jobs
+      changed_when: false
+
+    - name: Display Security Alerts
+      debug:
+        msg: |
+          
+          ====================================
+          SECURITY ALERTS - {{ ansible_hostname }}
+          ====================================
+          
+          {% if after_hours_logins.stdout != "" %}
+          ⚠️  AFTER HOURS LOGINS DETECTED:
+          {{ after_hours_logins.stdout }}
+          {% endif %}
+          
+          {% if root_logins.stdout != "" %}
+          🔐 ROOT LOGIN ACTIVITY:
+          {{ root_logins.stdout }}
+          {% endif %}
+          
+          {% if empty_password_users.stdout != "" %}
+          🚨 USERS WITH EMPTY PASSWORDS:
+          {{ empty_password_users.stdout }}
+          {% endif %}
+          
+          {% if no_password_expiry.stdout != "" %}
+          ⚠️  USERS WITHOUT PASSWORD EXPIRY:
+          {{ no_password_expiry.stdout }}
+          {% endif %}
+          
+          {% if never_logged_in_users.stdout != "" %}
+          ℹ️  USERS WHO NEVER LOGGED IN:
+          {{ never_logged_in_users.stdout }}
+          {% endif %}
+
+    - name: Display User Cron Jobs
+      debug:
+        msg: |
+          === USER CRON JOBS ===
+          {{ user_cron_jobs.stdout | default('No user cron jobs found') }}

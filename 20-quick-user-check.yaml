@@ -1,0 +1,26 @@
+# quick_user_check.yml
+---
+- name: Quick User Activity Check
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Quick user activity snapshot
+      shell: |
+        echo "=== Current Date/Time ==="
+        date
+        echo
+        echo "=== Currently Logged In Users ==="
+        who
+        echo
+        echo "=== Recent Logins (Last 10) ==="
+        last -n 10
+        echo
+        echo "=== System Uptime ==="
+        uptime
+      register: quick_snapshot
+      changed_when: false
+
+    - name: Display Quick Activity Report
+      debug:
+        msg: "{{ quick_snapshot.stdout }}"

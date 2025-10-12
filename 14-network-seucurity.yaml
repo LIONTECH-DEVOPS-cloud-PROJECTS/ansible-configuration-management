@@ -1,0 +1,77 @@
+# security_audit_ports.yml
+---
+- name: Network security audit - Port scanning
+  hosts: all
+  become: no
+  gather_facts: false
+
+  vars:
+    # Critical ports that should be monitored
+    security_critical_ports:
+      - 22    # SSH
+      - 23    # Telnet (insecure)
+      - 135   # RPC
+      - 139   # NetBIOS
+      - 445   # SMB
+      - 1433  # MSSQL
+      - 1434  # MSSQL Monitor
+      - 3306  # MySQL
+      - 3389  # RDP
+      - 5432  # PostgreSQL
+      - 5900  # VNC
+      - 6379  # Redis
+
+  tasks:
+    - name: Scan security-critical ports
+      wait_for:
+        host: "{{ ansible_host }}"
+        port: "{{ item }}"
+        timeout: 2
+        state: started
+      loop: "{{ security_critical_ports }}"
+      ignore_errors: yes
+      register: security_scan
+
+    - name: Identify potentially risky open ports
+      set_fact:
+        risky_ports: |
+          {{
+            security_scan.results | 
+            selectattr('failed', 'equalto', false) |
+            map(attribute='item') |
+            list
+          }}
+
+    - name: Generate security report
+      debug:
+        msg: |
+          🔒 SECURITY AUDIT REPORT - {{ ansible_host }}
+          ==========================================
+          {{ risky_ports | length }} potentially risky ports open
+          {% if risky_ports | length > 0 %}
+          RISKY PORTS FOUND: {{ risky_ports | sort }}
+          {% for port in risky_ports %}
+          ⚠️  Port {{ port }} - {{ lookup('dict', risk_descriptions)[port | string] }}
+          {% endfor %}
+          {% else %}
+          ✅ No risky ports detected
+          {% endif %}
+      vars:
+        risk_descriptions:
+          "23": "TELNET - Unencrypted remote access (HIGH RISK)"
+          "135": "RPC - Remote Procedure Call"
+          "139": "NetBIOS - File sharing"
+          "445": "SMB - Server Message Block"
+          "1433": "MSSQL - Database service"
+          "1434": "MSSQL Monitor"
+          "3389": "RDP - Remote Desktop"
+          "5900": "VNC - Remote desktop"
+          "6379": "Redis - If exposed without auth"
+
+    - name: Fail if high-risk ports are found
+      fail:
+        msg: "HIGH RISK PORT DETECTED: Port {{ item }} - {{ lookup('dict', risk_descriptions)[item | string] }}"
+      loop: "{{ risky_ports }}"
+      when: 
+        - item in [23, 135, 139, 445]  # High risk ports
+        - risky_ports | length > 0

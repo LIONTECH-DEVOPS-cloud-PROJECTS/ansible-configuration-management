@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to {{ company_name }}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #333;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 3rem;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            max-width: 800px;
+            margin: 2rem;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .logo {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+            color: {{ theme_color }};
+        }
+
+        h1 {
+            color: {{ theme_color }};
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            font-weight: 700;
+        }
+
+        .welcome-message {
+            font-size: 1.5rem;
+            color: #666;
+            margin-bottom: 2rem;
+            line-height: 1.6;
+        }
+
+        .server-info {
+            background: #f8f9fa;
+            padding: 1.5rem;
+            border-radius: 10px;
+            margin: 2rem 0;
+            border-left: 4px solid {{ secondary_color }};
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .info-item {
+            text-align: left;
+            padding: 0.5rem;
+        }
+
+        .info-label {
+            font-weight: 600;
+            color: {{ theme_color }};
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .info-value {
+            color: #333;
+            font-size: 1.1rem;
+            margin-top: 0.25rem;
+        }
+
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin: 2rem 0;
+        }
+
+        .feature {
+            background: white;
+            padding: 1rem;
+            border-radius: 10px;
+            border: 2px solid {{ theme_color }};
+            transition: transform 0.3s ease;
+        }
+
+        .feature:hover {
+            transform: translateY(-5px);
+        }
+
+        .feature-icon {
+            font-size: 2rem;
+            color: {{ theme_color }};
+            margin-bottom: 0.5rem;
+        }
+
+        .status-badge {
+            display: inline-block;
+            background: {{ theme_color }};
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 25px;
+            font-weight: 600;
+            margin-top: 1rem;
+        }
+
+        .deployment-info {
+            margin-top: 2rem;
+            padding-top: 1rem;
+            border-top: 1px solid #e9ecef;
+            font-size: 0.9rem;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">🦁</div>
+        
+        <h1>Welcome to {{ company_name }}</h1>
+        
+        <div class="welcome-message">
+            {{ welcome_message }}
+        </div>
+
+        <div class="status-badge">
+            ✅ Application Status: Running
+        </div>
+
+        <div class="server-info">
+            <h3>🚀 Server Information</h3>
+            <div class="info-grid">
+                <div class="info-item">
+                    <div class="info-label">Hostname</div>
+                    <div class="info-value">{{ ansible_hostname }}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">IP Address</div>
+                    <div class="info-value">{{ ansible_default_ipv4.address }}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Operating System</div>
+                    <div class="info-value">{{ ansible_distribution }} {{ ansible_distribution_version }}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Server Time</div>
+                    <div class="info-value" id="current-time">{{ ansible_date_time.iso8601 }}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="features">
+            <div class="feature">
+                <div class="feature-icon">⚡</div>
+                <div>High Performance</div>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">🔒</div>
+                <div>Secure & Reliable</div>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">🚀</div>
+                <div>Scalable Infrastructure</div>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">🔧</div>
+                <div>Managed by Ansible</div>
+            </div>
+        </div>
+
+        <div class="deployment-info">
+            <p><strong>Deployed by:</strong> Ansible Automation</p>
+            <p><strong>Deployment Time:</strong> {{ ansible_date_time.iso8601 }}</p>
+            <p><strong>Application Version:</strong> 1.0.0</p>
+        </div>
+    </div>
+
+    <script>
+        // Update time every second
+        function updateTime() {
+            const now = new Date();
+            document.getElementById('current-time').textContent = now.toISOString();
+        }
+        setInterval(updateTime, 1000);
+        updateTime();
+    </script>
+</body>
+</html>

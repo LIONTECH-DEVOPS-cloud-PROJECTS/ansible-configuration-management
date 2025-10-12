@@ -1,0 +1,52 @@
+---
+- name: Deploy Git to all servers
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  pre_tasks:
+    - name: Check system compatibility
+      fail:
+        msg: "Unsupported OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+      when: ansible_distribution not in ["Ubuntu", "CentOS", "RedHat", "Amazon", "Debian"]
+
+    - name: Update package cache
+      package:
+        update_cache: yes
+      when: ansible_os_family == "RedHat"
+
+    - name: Update package cache (Ubuntu/Debian)
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      when: ansible_os_family == "Debian"
+
+  roles:
+    - role: git
+      tags: [git, install, config]
+
+  post_tasks:
+    - name: Verify Git installation for all users
+      command: su - {{ item }} -c "git --version"
+      loop: "{{ git_users }}"
+      register: git_verification
+      changed_when: false
+      tags: verify
+
+    - name: Display Git deployment summary
+      debug:
+        msg: |
+          ✅ Git Deployment Summary - {{ ansible_hostname }}
+          ===========================================
+          Git Version: {{ git_version.stdout }}
+          Users Configured: {{ git_users | length }}
+          OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
+          Additional Tools: {{ install_additional_tools | default(true) }}
+          Git Aliases: {{ enable_git_aliases | default(true) }}
+          Git Prompt: {{ enable_git_prompt | default(true) }}
+
+          📝 Next Steps:
+          - Run 'git config --list' to verify configuration
+          - Run 'source ~/.bashrc' to load aliases and prompt
+          - Test with: git clone https://github.com/user/repo.git
+      tags: summary

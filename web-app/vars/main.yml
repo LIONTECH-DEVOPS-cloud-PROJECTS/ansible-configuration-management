@@ -1,0 +1,13 @@
+---
+# Global web application settings
+web_app_name: "LionTech"
+company_name: "LionTech Innovations"
+welcome_message: "Welcome to LionTech - Where Innovation Meets Excellence"
+theme_color: "#2E8B57"  # Sea Green
+secondary_color: "#FF8C00"  # Dark Orange
+
+# Web server configuration
+http_port: 80
+web_app_directory: "/var/www/liontech"
+configure_firewall: true
+change_document_root: false

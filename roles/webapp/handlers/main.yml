@@ -1,0 +1,105 @@
+---
+- name: Install HTTPD package (RedHat/CentOS)
+  package:
+    name: httpd
+    state: present
+  when: ansible_os_family == "RedHat"
+  tags: install
+
+- name: Install Apache2 package (Debian/Ubuntu)
+  package:
+    name: apache2
+    state: present
+  when: ansible_os_family == "Debian"
+  tags: install
+
+- name: Create web application directory
+  file:
+    path: "{{ web_app_directory }}"
+    state: directory
+    owner: "{{ web_user }}"
+    group: "{{ web_user }}"
+    mode: '0755'
+  tags: setup
+
+- name: Deploy custom Apache configuration
+  copy:
+    src: custom-config.conf
+    dest: "{{ apache_config_path }}/conf.d/custom-app.conf"
+    owner: root
+    group: root
+    mode: '0644'
+    backup: yes
+  notify: restart apache
+  tags: config
+
+- name: Create index.html from template
+  template:
+    src: index.html.j2
+    dest: "{{ web_app_directory }}/index.html"
+    owner: "{{ web_user }}"
+    group: "{{ web_user }}"
+    mode: '0644'
+    backup: yes
+  notify: restart apache
+  tags: deploy
+
+- name: Set Apache document root to our application directory
+  lineinfile:
+    path: "{{ apache_main_config }}"
+    regexp: '^DocumentRoot'
+    line: 'DocumentRoot {{ web_app_directory }}'
+    backup: yes
+  notify: restart apache
+  when: change_document_root | default(false)
+  tags: config
+
+- name: Ensure Apache service is enabled and started
+  systemd:
+    name: "{{ apache_service_name }}"
+    state: started
+    enabled: yes
+  tags: service
+
+- name: Open firewall port for HTTP
+  firewalld:
+    port: "{{ http_port }}/tcp"
+    permanent: yes
+    state: enabled
+    immediate: yes
+  when: 
+    - ansible_os_family == "RedHat"
+    - configure_firewall | default(true)
+  tags: firewall
+
+- name: Open firewall port for HTTP (Ubuntu)
+  ufw:
+    rule: allow
+    port: "{{ http_port }}"
+    proto: tcp
+  when: 
+    - ansible_os_family == "Debian"
+    - configure_firewall | default(true)
+  tags: firewall
+
+- name: Verify Apache is running
+  uri:
+    url: "http://localhost:{{ http_port }}"
+    status_code: 200
+    timeout: 10
+  register: apache_status
+  until: apache_status.status == 200
+  retries: 5
+  delay: 2
+  ignore_errors: yes
+  tags: verify
+
+- name: Display deployment status
+  debug:
+    msg: |
+      Web application deployed successfully!
+      Access URL: http://{{ ansible_host }}:{{ http_port }}
+      App Directory: {{ web_app_directory }}
+      Server: {{ ansible_hostname }}
+  when: apache_status.status == 200
+  tags: verify

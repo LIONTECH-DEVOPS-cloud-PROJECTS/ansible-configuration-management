@@ -1,0 +1,184 @@
+# deploy_users_advanced.yml
+---
+- name: Deploy users with SSH keys for Amazon Linux and RedHat
+  hosts: all
+  become: yes
+
+  vars:
+    users:
+      - username: "prof-devuser"
+        fullname: "Development User"
+        groups: "wheel,developers"  # Changed from 'sudo' to 'wheel' for RedHat
+        key_file: "keys/admin_rsa.pub"
+        
+      - username: "deployer"
+        fullname: "Deployment User"
+        groups: "developers"
+        key_file: "keys/admin_rsa.pub"
+        
+      - username: "admin"
+        fullname: "Administrator"
+        groups: "wheel"  # Changed from 'sudo' to 'wheel'
+        key_file: "keys/admin_rsa.pub"
+
+    # OS-specific settings
+    sudo_group: "{{ 'wheel' if ansible_os_family == 'RedHat' else 'sudo' }}"
+    ssh_service_name: "{{ 'sshd' if ansible_os_family == 'RedHat' else 'ssh' }}"
+
+  pre_tasks:
+    - name: Check if running on supported OS
+      fail:
+        msg: "This playbook only supports Amazon Linux and RedHat-based systems. Found: {{ ansible_distribution }}"
+      when: ansible_os_family != "RedHat"
+
+    - name: Install sudo if not present (Amazon Linux 2023)
+      package:
+        name: sudo
+        state: present
+      when: 
+        - ansible_distribution == "Amazon"
+        - ansible_distribution_major_version | int >= 2023
+
+  tasks:
+    - name: Ensure developers group exists
+      group:
+        name: developers
+        state: present
+
+    - name: Create wheel group if it doesn't exist (RedHat systems)
+      group:
+        name: wheel
+        state: present
+      when: ansible_os_family == "RedHat"
+
+    - name: Create users with OS-specific settings
+      user:
+        name: "{{ item.username }}"
+        comment: "{{ item.fullname }}"
+        groups: "{{ item.groups | replace('sudo', sudo_group) }}"  # Replace sudo with wheel for RedHat
+        shell: /bin/bash
+        home: "/home/{{ item.username }}"
+        state: present
+        create_home: yes
+        system: no
+      loop: "{{ users }}"
+      register: users_created
+
+    - name: Create .ssh directories with correct permissions
+      file:
+        path: "/home/{{ item.username }}/.ssh"
+        state: directory
+        owner: "{{ item.username }}"
+        group: "{{ item.username }}"
+        mode: '0700'
+      loop: "{{ users }}"
+
+    - name: Deploy SSH keys from files
+      authorized_key:
+        user: "{{ item.username }}"
+        state: present
+        key: "{{ lookup('file', item.key_file) }}"
+      loop: "{{ users }}"
+
+    - name: Configure sudo access for privileged users (RedHat style)
+      lineinfile:
+        path: /etc/sudoers
+        line: "{{ item.username }} ALL=(ALL) NOPASSWD:ALL"
+        state: present
+        validate: 'visudo -cf %s'
+      loop: "{{ users }}"
+      when: 
+        - "'wheel' in item.groups or 'sudo' in item.groups"
+        - ansible_os_family == "RedHat"
+      tags: sudo
+
+    - name: Configure sudo access using sudoers.d directory
+      copy:
+        content: "{{ item.username }} ALL=(ALL) NOPASSWD:ALL"
+        dest: "/etc/sudoers.d/{{ item.username }}"
+        owner: root
+        group: root
+        mode: '0440'
+        validate: 'visudo -cf %s'
+      loop: "{{ users }}"
+      when: 
+        - "'wheel' in item.groups or 'sudo' in item.groups"
+      tags: sudo
+
+    - name: Ensure sudoers.d directory exists and has correct permissions
+      file:
+        path: /etc/sudoers.d
+        state: directory
+        owner: root
+        group: root
+        mode: '0750'
+
+    - name: Configure SSH password authentication
+      lineinfile:
+        path: "/etc/ssh/sshd_config"
+        regexp: "^#?PasswordAuthentication"
+        line: "PasswordAuthentication yes"
+        state: present
+        backup: yes
+      notify: restart ssh service
+
+    - name: Ensure SSH service is running
+      systemd:
+        name: "{{ ssh_service_name }}"
+        state: started
+        enabled: yes
+
+    - name: Set secure permissions on home directories
+      file:
+        path: "/home/{{ item.username }}"
+        owner: "{{ item.username }}"
+        group: "{{ item.username }}"
+        mode: '0700'  # More secure than 0755
+        recurse: yes
+      loop: "{{ users }}"
+      when: users_created.changed
+
+    - name: Configure SELinux for home directories (RedHat systems)
+      sefcontext:
+        target: '/home/{{ item.username }}(/.*)?'
+        setype: user_home_dir_t
+        state: present
+      loop: "{{ users }}"
+      when: 
+        - ansible_os_family == "RedHat"
+        - ansible_selinux.status == "enabled"
+      ignore_errors: yes
+      tags: selinux
+
+    - name: Restore SELinux context for home directories
+      command: restorecon -R /home/{{ item.username }}
+      loop: "{{ users }}"
+      when: 
+        - ansible_os_family == "RedHat"
+        - ansible_selinux.status == "enabled"
+      ignore_errors: yes
+      tags: selinux
+
+    - name: Display deployment summary
+      debug:
+        msg: |
+          ✅ USER DEPLOYMENT SUMMARY - {{ ansible_hostname }}
+          ===========================================
+          OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
+          Sudo Group: {{ sudo_group }}
+          SSH Service: {{ ssh_service_name }}
+          
+          Users Created:
+          {% for user in users %}
+          - {{ user.username }} (Groups: {{ user.groups | replace('sudo', sudo_group) }})
+          {% endfor %}
+          
+          Next Steps:
+          1. Test SSH: ssh -i keyfile {{ users[0].username }}@{{ ansible_host }}
+          2. Test sudo: ssh user@host "sudo whoami"
+
+  handlers:
+    - name: restart ssh service
+      systemd:
+        name: "{{ ssh_service_name }}"
+        state: restarted

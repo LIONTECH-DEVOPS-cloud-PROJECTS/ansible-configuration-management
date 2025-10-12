@@ -1,0 +1,46 @@
+# Git configuration for {{ git_user_name }}
+# Managed by Ansible - DO NOT EDIT MANUALLY
+
+[user]
+    name = {{ git_user_name }}
+    email = {{ git_user_email }}
+
+[core]
+    editor = {{ git_core_config | selectattr('key', 'equalto', 'core.editor') | map(attribute='value') | first | default('vim') }}
+    pager = {{ git_core_config | selectattr('key', 'equalto', 'core.pager') | map(attribute='value') | first | default('less -R') }}
+    autocrlf = input
+    excludesfile = ~/.gitignore_global
+
+{% if enable_color_ui | default(true) %}
+[color]
+    ui = auto
+[color "diff"]
+    meta = yellow bold
+    frag = magenta bold
+    old = red bold
+    new = green bold
+[color "status"]
+    added = green
+    changed = yellow
+    untracked = red
+{% endif %}
+
+[push]
+    default = simple
+
+[pull]
+    rebase = {{ git_core_config | selectattr('key', 'equalto', 'pull.rebase') | map(attribute='value') | first | default('false') }}
+
+[merge]
+    tool = {{ git_core_config | selectattr('key', 'equalto', 'merge.tool') | map(attribute='value') | first | default('vimdiff') }}
+
+[init]
+    defaultBranch = {{ git_core_config | selectattr('key', 'equalto', 'init.defaultBranch') | map(attribute='value') | first | default('main') }}
+
+{% if configure_global_git | default(false) %}
+# Global Git configuration
+[receive]
+    fsckObjects = true
+[transfer]
+    fsckObjects = true
+{% endif %}
