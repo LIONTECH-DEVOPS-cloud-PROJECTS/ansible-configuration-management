@@ -1,0 +1,19 @@
+---
+# Nginx Configuration
+nginx_user: www-data
+nginx_worker_processes: auto
+nginx_worker_connections: 1024
+nginx_keepalive_timeout: 65
+nginx_server_name: "{{ ansible_hostname }}"
+nginx_listen_port: 80
+
+# Application Configuration
+app_name: "sample-app"
+app_port: 8080
+app_user: "www-data"
+app_directory: "/var/www/{{ app_name }}"
+
+# Sample application content
+app_title: "Welcome to Our Sample Application"
+app_message: "This application was deployed using Ansible!"
+app_version: "1.0.0"

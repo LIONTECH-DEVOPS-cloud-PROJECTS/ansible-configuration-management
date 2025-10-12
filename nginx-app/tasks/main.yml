@@ -1,0 +1,130 @@
+---
+- name: Install prerequisites for both Ubuntu and RedHat
+  package:
+    name:
+      - python3
+      - python3-pip
+    state: present
+  when: ansible_os_family == "Debian" or ansible_os_family == "RedHat"
+
+- name: Install Nginx (Ubuntu)
+  package:
+    name: nginx
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Install Nginx (RedHat)
+  package:
+    name: nginx
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Install EPEL repository (RedHat)
+  package:
+    name: epel-release
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Create application directory
+  file:
+    path: "{{ app_directory }}"
+    state: directory
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode: '0755'
+
+- name: Deploy sample Python application
+  template:
+    src: sample-app.py.j2
+    dest: "{{ app_directory }}/app.py"
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode: '0755'
+
+- name: Install Python Flask for sample app
+  pip:
+    name: flask
+    executable: pip3
+
+- name: Create systemd service for sample app
+  template:
+    src: sample-app.service.j2
+    dest: /etc/systemd/system/{{ app_name }}.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify:
+    - reload systemd
+    - restart sample app
+
+- name: Deploy custom Nginx configuration
+  template:
+    src: nginx.conf.j2
+    dest: /etc/nginx/nginx.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify:
+    - restart nginx
+
+- name: Deploy Nginx site configuration
+  template:
+    src: nginx-site.conf.j2
+    dest: /etc/nginx/sites-available/{{ app_name }}
+    owner: root
+    group: root
+    mode: '0644'
+  notify:
+    - restart nginx
+
+- name: Enable Nginx site (Ubuntu)
+  file:
+    src: /etc/nginx/sites-available/{{ app_name }}
+    dest: /etc/nginx/sites-enabled/{{ app_name }}
+    state: link
+  when: ansible_os_family == "Debian"
+  notify:
+    - restart nginx
+
+- name: Remove default Nginx site (Ubuntu)
+  file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  when: ansible_os_family == "Debian"
+  notify:
+    - restart nginx
+
+- name: Deploy sample HTML page
+  template:
+    src: index.html.j2
+    dest: "{{ app_directory }}/index.html"
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode: '0644'
+
+- name: Enable and start Nginx service
+  systemd:
+    name: nginx
+    enabled: yes
+    state: started
+
+- name: Enable and start sample application service
+  systemd:
+    name: "{{ app_name }}"
+    enabled: yes
+    state: started
+
+- name: Configure firewall (RedHat)
+  firewalld:
+    service: http
+    permanent: yes
+    state: enabled
+    immediate: yes
+  when: ansible_os_family == "RedHat"
+
+- name: Configure firewall (Ubuntu)
+  ufw:
+    rule: allow
+    port: "{{ nginx_listen_port }}"
+    proto: tcp
+  when: ansible_os_family == "Debian"

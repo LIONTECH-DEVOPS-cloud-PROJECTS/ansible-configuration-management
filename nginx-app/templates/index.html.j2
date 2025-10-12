@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ app_title }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+        .server-info {
+            background: #f9f9f9;
+            padding: 15px;
+            border-left: 4px solid #4CAF50;
+            margin: 20px 0;
+        }
+        .api-link {
+            display: inline-block;
+            background: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>{{ app_title }}</h1>
+        <p>{{ app_message }}</p>
+        
+        <div class="server-info">
+            <h3>Server Information:</h3>
+            <p><strong>Hostname:</strong> {{ ansible_hostname }}</p>
+            <p><strong>OS:</strong> {{ ansible_distribution }} {{ ansible_distribution_version }}</p>
+            <p><strong>Application Version:</strong> {{ app_version }}</p>
+            <p><strong>Deployed with:</strong> Ansible</p>
+        </div>
+
+        <h3>API Endpoints:</h3>
+        <a href="/api/health" class="api-link">Health Check</a>
+        <a href="/api/info" class="api-link">Server Info</a>
+        
+        <h3>Features:</h3>
+        <ul>
+            <li>Nginx web server</li>
+            <li>Python Flask backend API</li>
+            <li>Static file serving</li>
+            <li>Load balanced ready</li>
+            <li>Automated deployment</li>
+        </ul>
+    </div>
+</body>
+</html>

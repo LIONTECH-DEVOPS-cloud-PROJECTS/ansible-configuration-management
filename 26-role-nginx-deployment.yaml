@@ -1,0 +1,8 @@
+---
+- name: Deploy Nginx and Sample Application
+  hosts: web_servers
+  become: yes
+  gather_facts: yes
+  
+  roles:
+    - nginx-app  

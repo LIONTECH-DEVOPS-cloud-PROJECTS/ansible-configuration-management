@@ -1,0 +1,15 @@
+[Unit]
+Description=Sample Python Application
+After=network.target
+
+[Service]
+Type=simple
+User={{ app_user }}
+Group={{ app_user }}
+WorkingDirectory={{ app_directory }}
+ExecStart=/usr/bin/python3 {{ app_directory }}/app.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
