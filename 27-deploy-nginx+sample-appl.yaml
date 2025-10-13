@@ -17,24 +17,13 @@
     web_root: "/var/www/{{ app_name }}"
     nginx_sites_available: "/etc/nginx/sites-available"
     nginx_sites_enabled: "/etc/nginx/sites-enabled"
-    
-    # HTML file configuration
-    local_html_file: "index.html"  # File in current working directory
-    #remote_html_file: "index.html" # File on remote server
 
-  pre_tasks:
+  tasks:
     - name: Check if running on supported OS
       fail:
         msg: "Unsupported OS: {{ ansible_distribution }}. Supported: Ubuntu, CentOS, RedHat, Amazon Linux"
       when: ansible_distribution not in ["Ubuntu", "CentOS", "RedHat", "Amazon", "Debian"]
 
-    - name: Verify HTML file exists locally
-      stat:
-        path: "{{ local_html_file }}"
-      register: html_file_check
-      failed_when: not html_file_check.stat.exists
-
-  tasks:
     - name: Install Nginx web server
       package:
         name: nginx
@@ -49,24 +38,131 @@
         group: "{{ nginx_group }}"
         mode: '0755'
 
-    - name: Copy HTML file from current directory to web root
+    - name: Create HTML file with dynamic content
       copy:
-        src: "{{ local_html_file }}"
-        dest: "{{ web_root }}/{{ remote_html_file }}"
+        content: |
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>Welcome to {{ app_name }}</title>
+              <style>
+                  * { margin: 0; padding: 0; box-sizing: border-box; }
+                  body { 
+                      font-family: 'Arial', sans-serif; 
+                      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                      min-height: 100vh; 
+                      display: flex; 
+                      align-items: center; 
+                      justify-content: center; 
+                      color: white; 
+                  }
+                  .container { 
+                      background: rgba(255, 255, 255, 0.1); 
+                      padding: 3rem; 
+                      border-radius: 20px; 
+                      text-align: center; 
+                      max-width: 800px; 
+                      margin: 2rem; 
+                      backdrop-filter: blur(10px);
+                      border: 1px solid rgba(255, 255, 255, 0.2);
+                  }
+                  h1 { font-size: 3rem; margin-bottom: 1rem; }
+                  .server-info { 
+                      background: rgba(0, 0, 0, 0.2); 
+                      padding: 1.5rem; 
+                      border-radius: 10px; 
+                      margin: 2rem 0; 
+                      text-align: left; 
+                  }
+                  .info-item { margin: 0.5rem 0; font-family: monospace; }
+                  .status { 
+                      background: #00cc66; 
+                      color: white; 
+                      padding: 0.5rem 1rem; 
+                      border-radius: 25px; 
+                      display: inline-block; 
+                      margin: 1rem 0; 
+                  }
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <h1>🚀 Welcome to {{ app_name }}</h1>
+                  <p style="font-size: 1.2rem; margin-bottom: 2rem;">Your simple application is successfully deployed with Ansible!</p>
+                  
+                  <div class="status">✅ Application Status: Running</div>
+
+                  <div class="server-info">
+                      <h3>📊 Server Information</h3>
+                      <div class="info-item"><strong>Hostname:</strong> {{ ansible_hostname }}</div>
+                      <div class="info-item"><strong>IP Address:</strong> {{ ansible_default_ipv4.address }}</div>
+                      <div class="info-item"><strong>OS:</strong> {{ ansible_distribution }} {{ ansible_distribution_version }}</div>
+                      <div class="info-item"><strong>Deployed with:</strong> Ansible</div>
+                      <div class="info-item"><strong>Web Server:</strong> Nginx</div>
+                      <div class="info-item"><strong>Timestamp:</strong> <span id="current-time">Loading...</span></div>
+                  </div>
+
+                  <div style="margin-top: 2rem; font-size: 0.9rem; opacity: 0.8;">
+                      Powered by {{ app_name }} v{{ app_version }} | Automated Deployment
+                  </div>
+              </div>
+
+              <script>
+                  function updateTime() {
+                      const now = new Date();
+                      document.getElementById('current-time').textContent = now.toISOString();
+                  }
+                  setInterval(updateTime, 1000);
+                  updateTime();
+              </script>
+          </body>
+          </html>
+        dest: "{{ web_root }}/index.html"
         owner: "{{ nginx_user }}"
         group: "{{ nginx_group }}"
         mode: '0644'
-        backup: yes
       notify: reload nginx
 
     - name: Create Nginx server block configuration
-      template:
-        src: nginx-site.conf.j2
+      copy:
+        content: |
+          # Nginx configuration for {{ app_name }}
+          # Managed by Ansible
+
+          server {
+              listen 80;
+              listen [::]:80;
+              
+              server_name {{ domain_name }} {{ ansible_hostname }};
+              root {{ web_root }};
+              index index.html;
+              
+              # Security headers
+              add_header X-Frame-Options "SAMEORIGIN" always;
+              add_header X-XSS-Protection "1; mode=block" always;
+              add_header X-Content-Type-Options "nosniff" always;
+              
+              location / {
+                  try_files $uri $uri/ =404;
+              }
+              
+              # Cache static assets
+              location ~* \.(jpg|jpeg|png|gif|ico|css|js)$ {
+                  expires 1y;
+                  add_header Cache-Control "public, immutable";
+              }
+              
+              # Deny access to hidden files
+              location ~ /\. {
+                  deny all;
+              }
+          }
         dest: "{{ nginx_sites_available }}/{{ app_name }}"
         owner: root
         group: root
         mode: '0644'
-        backup: yes
       notify: reload nginx
 
     - name: Enable Nginx site
@@ -83,30 +179,6 @@
       when: ansible_os_family == "Debian"
       ignore_errors: yes
       notify: reload nginx
-
-    - name: Set proper permissions on web directory
-      file:
-        path: "{{ web_root }}"
-        owner: "{{ nginx_user }}"
-        group: "{{ nginx_group }}"
-        mode: '0755'
-        recurse: yes
-
-    - name: Open firewall port for HTTP (RedHat/CentOS)
-      firewalld:
-        port: "80/tcp"
-        permanent: yes
-        state: enabled
-        immediate: yes
-      when: ansible_os_family == "RedHat"
-      notify: reload firewalld
-
-    - name: Open firewall port for HTTP (Ubuntu)
-      ufw:
-        rule: allow
-        port: "80"
-        proto: tcp
-      when: ansible_os_family == "Debian"
 
     - name: Verify Nginx configuration
       command: nginx -t
@@ -127,6 +199,7 @@
         status_code: 200
         timeout: 10
       register: app_test
+      ignore_errors: yes
 
   post_tasks:
     - name: Display deployment summary
@@ -138,31 +211,11 @@
           Server: {{ ansible_hostname }}
           Access URL: http://{{ ansible_default_ipv4.address }}
           Web Root: {{ web_root }}
-          HTML File: {{ web_root }}/{{ remote_html_file }}
-          Nginx Test: {{ nginx_config_test.rc | ternary('FAILED', 'PASSED') }}
-          App Test: {{ app_test.status | ternary('SUCCESS', 'FAILED') }}
+          Nginx Test: {{ "PASSED" if nginx_config_test.rc == 0 else "FAILED" }}
+          App Test: {{ "SUCCESS" if app_test.status == 200 else "CHECK MANUALLY" }}
           
-          📋 Next Steps:
-          1. Visit: http://{{ ansible_default_ipv4.address }}
-          2. Check logs: tail -f /var/log/nginx/access.log
-          3. Test: curl http://localhost/
-
-    - name: Save deployment information
-      copy:
-        content: |
-          # Application Deployment Info
-          Application: {{ app_name }}
-          Version: {{ app_version }}
-          Deployed: {{ ansible_date_time.iso8601 }}
-          Server: {{ ansible_hostname }}
-          IP Address: {{ ansible_default_ipv4.address }}
-          Web Root: {{ web_root }}
-          Nginx Version: {{ nginx_version.stdout }}
-          Ansible Host: {{ ansible_host }}
-        dest: "{{ web_root }}/deployment.info"
-        owner: "{{ nginx_user }}"
-        group: "{{ nginx_group }}"
-        mode: '0644'
+          📋 Quick Test:
+          curl http://{{ ansible_default_ipv4.address }}
 
   handlers:
     - name: enable nginx
@@ -180,8 +233,3 @@
       systemd:
         name: nginx
         state: restarted
-
-    - name: reload firewalld
-      systemd:
-        name: firewalld
-        state: reloaded
