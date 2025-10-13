@@ -11,12 +11,14 @@
     app_version: "1.0.0"
     domain_name: "localhost"
     
-    # Nginx configuration
-    nginx_user: "www-data"
-    nginx_group: "www-data"
-    web_root: "/var/www/{{ app_name }}"
-    nginx_sites_available: "/etc/nginx/sites-available"
-    nginx_sites_enabled: "/etc/nginx/sites-enabled"
+    # OS-specific user configuration
+    nginx_user: "{{ 'nginx' if ansible_os_family == 'RedHat' else 'www-data' }}"
+    nginx_group: "{{ 'nginx' if ansible_os_family == 'RedHat' else 'www-data' }}"
+    web_root: "/usr/share/nginx/html/{{ app_name }}"
+    
+    # OS-specific paths
+    nginx_sites_available: "{{ '/etc/nginx/conf.d' if ansible_os_family == 'RedHat' else '/etc/nginx/sites-available' }}"
+    nginx_sites_enabled: "{{ '/etc/nginx/conf.d' if ansible_os_family == 'RedHat' else '/etc/nginx/sites-enabled' }}"
 
   tasks:
     - name: Check if running on supported OS
@@ -24,13 +26,17 @@
         msg: "Unsupported OS: {{ ansible_distribution }}. Supported: Ubuntu, CentOS, RedHat, Amazon Linux"
       when: ansible_distribution not in ["Ubuntu", "CentOS", "RedHat", "Amazon", "Debian"]
 
+    - name: Display OS information
+      debug:
+        msg: "Detected OS: {{ ansible_distribution }} {{ ansible_distribution_version }} - Using user: {{ nginx_user }}, group: {{ nginx_group }}"
+
     - name: Install Nginx web server
       package:
         name: nginx
         state: present
       notify: enable nginx
 
-    - name: Create application directory
+    - name: Create application directory with correct ownership
       file:
         path: "{{ web_root }}"
         state: directory
@@ -99,8 +105,8 @@
                       <div class="info-item"><strong>Hostname:</strong> {{ ansible_hostname }}</div>
                       <div class="info-item"><strong>IP Address:</strong> {{ ansible_default_ipv4.address }}</div>
                       <div class="info-item"><strong>OS:</strong> {{ ansible_distribution }} {{ ansible_distribution_version }}</div>
-                      <div class="info-item"><strong>Deployed with:</strong> Ansible</div>
                       <div class="info-item"><strong>Web Server:</strong> Nginx</div>
+                      <div class="info-item"><strong>Deployed with:</strong> Ansible</div>
                       <div class="info-item"><strong>Timestamp:</strong> <span id="current-time">Loading...</span></div>
                   </div>
 
@@ -125,11 +131,53 @@
         mode: '0644'
       notify: reload nginx
 
-    - name: Create Nginx server block configuration
+    - name: Configure Nginx for RedHat/Amazon Linux
       copy:
         content: |
           # Nginx configuration for {{ app_name }}
-          # Managed by Ansible
+          # Managed by Ansible - For RedHat/Amazon Linux
+
+          server {
+              listen       80;
+              listen       [::]:80;
+              server_name  {{ domain_name }} {{ ansible_hostname }};
+              
+              # Root directory
+              root         {{ web_root }};
+              index        index.html;
+
+              # Security headers
+              add_header X-Frame-Options "SAMEORIGIN" always;
+              add_header X-XSS-Protection "1; mode=block" always;
+              add_header X-Content-Type-Options "nosniff" always;
+              
+              # Main location
+              location / {
+                  try_files $uri $uri/ =404;
+              }
+
+              # Cache static files
+              location ~* \.(jpg|jpeg|png|gif|ico|css|js)$ {
+                  expires 1y;
+                  add_header Cache-Control "public, immutable";
+              }
+
+              # Error pages
+              error_page 404 /404.html;
+              error_page 500 502 503 504 /50x.html;
+          }
+        dest: "{{ nginx_sites_available }}/{{ app_name }}.conf"
+        owner: root
+        group: root
+        mode: '0644'
+      when: ansible_os_family == "RedHat"
+      notify: reload nginx
+
+    - name: Configure Nginx for Ubuntu/Debian
+      copy:
+        content: |
+          # Nginx configuration for {{ app_name }}
+          # Managed by Ansible - For Ubuntu/Debian
 
           server {
               listen 80;
@@ -163,22 +211,40 @@
         owner: root
         group: root
         mode: '0644'
+      when: ansible_os_family == "Debian"
       notify: reload nginx
 
-    - name: Enable Nginx site
+    - name: Enable Nginx site on Ubuntu/Debian
       file:
         src: "{{ nginx_sites_available }}/{{ app_name }}"
         dest: "{{ nginx_sites_enabled }}/{{ app_name }}"
         state: link
+      when: ansible_os_family == "Debian"
       notify: reload nginx
 
-    - name: Disable default Nginx site (Ubuntu/Debian)
+    - name: Disable default Nginx site on Ubuntu/Debian
       file:
         path: "{{ nginx_sites_enabled }}/default"
         state: absent
       when: ansible_os_family == "Debian"
       ignore_errors: yes
       notify: reload nginx
+
+    - name: Open firewall port for HTTP (RedHat/CentOS/Amazon Linux)
+      firewalld:
+        port: "80/tcp"
+        permanent: yes
+        state: enabled
+        immediate: yes
+      when: ansible_os_family == "RedHat"
+      notify: reload firewalld
+
+    - name: Open firewall port for HTTP (Ubuntu)
+      ufw:
+        rule: allow
+        port: "80"
+        proto: tcp
+      when: ansible_os_family == "Debian"
 
     - name: Verify Nginx configuration
       command: nginx -t
@@ -209,13 +275,32 @@
           ====================================
           Application: {{ app_name }} v{{ app_version }}
           Server: {{ ansible_hostname }}
+          OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
           Access URL: http://{{ ansible_default_ipv4.address }}
           Web Root: {{ web_root }}
+          Nginx User: {{ nginx_user }}
           Nginx Test: {{ "PASSED" if nginx_config_test.rc == 0 else "FAILED" }}
           App Test: {{ "SUCCESS" if app_test.status == 200 else "CHECK MANUALLY" }}
           
           📋 Quick Test:
           curl http://{{ ansible_default_ipv4.address }}
+
+    - name: Save deployment information
+      copy:
+        content: |
+          # Application Deployment Info
+          Application: {{ app_name }}
+          Version: {{ app_version }}
+          Deployed: {{ ansible_date_time.iso8601 }}
+          Server: {{ ansible_hostname }}
+          IP Address: {{ ansible_default_ipv4.address }}
+          Web Root: {{ web_root }}
+          OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
+          Nginx User: {{ nginx_user }}
+        dest: "{{ web_root }}/deployment.info"
+        owner: "{{ nginx_user }}"
+        group: "{{ nginx_group }}"
+        mode: '0644'
 
   handlers:
     - name: enable nginx
@@ -233,3 +318,8 @@
       systemd:
         name: nginx
         state: restarted
+
+    - name: reload firewalld
+      systemd:
+        name: firewalld
+        state: reloaded
