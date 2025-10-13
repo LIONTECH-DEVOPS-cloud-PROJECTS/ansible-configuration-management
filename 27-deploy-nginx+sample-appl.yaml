@@ -20,7 +20,7 @@
     
     # HTML file configuration
     local_html_file: "index.html"  # File in current working directory
-    remote_html_file: "index.html" # File on remote server
+    #remote_html_file: "index.html" # File on remote server
 
   pre_tasks:
     - name: Check if running on supported OS
