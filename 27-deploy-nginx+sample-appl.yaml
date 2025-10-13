@@ -1,0 +1,187 @@
+# deploy-simple-app.yml
+---
+- name: Deploy Simple HTML Application with Nginx
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  vars:
+    # Application configuration
+    app_name: "my-simple-app"
+    app_version: "1.0.0"
+    domain_name: "localhost"
+    
+    # Nginx configuration
+    nginx_user: "www-data"
+    nginx_group: "www-data"
+    web_root: "/var/www/{{ app_name }}"
+    nginx_sites_available: "/etc/nginx/sites-available"
+    nginx_sites_enabled: "/etc/nginx/sites-enabled"
+    
+    # HTML file configuration
+    local_html_file: "index.html"  # File in current working directory
+    remote_html_file: "index.html" # File on remote server
+
+  pre_tasks:
+    - name: Check if running on supported OS
+      fail:
+        msg: "Unsupported OS: {{ ansible_distribution }}. Supported: Ubuntu, CentOS, RedHat, Amazon Linux"
+      when: ansible_distribution not in ["Ubuntu", "CentOS", "RedHat", "Amazon", "Debian"]
+
+    - name: Verify HTML file exists locally
+      stat:
+        path: "{{ local_html_file }}"
+      register: html_file_check
+      failed_when: not html_file_check.stat.exists
+
+  tasks:
+    - name: Install Nginx web server
+      package:
+        name: nginx
+        state: present
+      notify: enable nginx
+
+    - name: Create application directory
+      file:
+        path: "{{ web_root }}"
+        state: directory
+        owner: "{{ nginx_user }}"
+        group: "{{ nginx_group }}"
+        mode: '0755'
+
+    - name: Copy HTML file from current directory to web root
+      copy:
+        src: "{{ local_html_file }}"
+        dest: "{{ web_root }}/{{ remote_html_file }}"
+        owner: "{{ nginx_user }}"
+        group: "{{ nginx_group }}"
+        mode: '0644'
+        backup: yes
+      notify: reload nginx
+
+    - name: Create Nginx server block configuration
+      template:
+        src: nginx-site.conf.j2
+        dest: "{{ nginx_sites_available }}/{{ app_name }}"
+        owner: root
+        group: root
+        mode: '0644'
+        backup: yes
+      notify: reload nginx
+
+    - name: Enable Nginx site
+      file:
+        src: "{{ nginx_sites_available }}/{{ app_name }}"
+        dest: "{{ nginx_sites_enabled }}/{{ app_name }}"
+        state: link
+      notify: reload nginx
+
+    - name: Disable default Nginx site (Ubuntu/Debian)
+      file:
+        path: "{{ nginx_sites_enabled }}/default"
+        state: absent
+      when: ansible_os_family == "Debian"
+      ignore_errors: yes
+      notify: reload nginx
+
+    - name: Set proper permissions on web directory
+      file:
+        path: "{{ web_root }}"
+        owner: "{{ nginx_user }}"
+        group: "{{ nginx_group }}"
+        mode: '0755'
+        recurse: yes
+
+    - name: Open firewall port for HTTP (RedHat/CentOS)
+      firewalld:
+        port: "80/tcp"
+        permanent: yes
+        state: enabled
+        immediate: yes
+      when: ansible_os_family == "RedHat"
+      notify: reload firewalld
+
+    - name: Open firewall port for HTTP (Ubuntu)
+      ufw:
+        rule: allow
+        port: "80"
+        proto: tcp
+      when: ansible_os_family == "Debian"
+
+    - name: Verify Nginx configuration
+      command: nginx -t
+      register: nginx_config_test
+      changed_when: false
+
+    - name: Wait for Nginx to be ready
+      wait_for:
+        port: 80
+        host: "127.0.0.1"
+        state: started
+        timeout: 30
+
+    - name: Test application deployment
+      uri:
+        url: "http://localhost/"
+        method: GET
+        status_code: 200
+        timeout: 10
+      register: app_test
+
+  post_tasks:
+    - name: Display deployment summary
+      debug:
+        msg: |
+          🎉 APPLICATION DEPLOYMENT SUCCESSFUL!
+          ====================================
+          Application: {{ app_name }} v{{ app_version }}
+          Server: {{ ansible_hostname }}
+          Access URL: http://{{ ansible_default_ipv4.address }}
+          Web Root: {{ web_root }}
+          HTML File: {{ web_root }}/{{ remote_html_file }}
+          Nginx Test: {{ nginx_config_test.rc | ternary('FAILED', 'PASSED') }}
+          App Test: {{ app_test.status | ternary('SUCCESS', 'FAILED') }}
+          
+          📋 Next Steps:
+          1. Visit: http://{{ ansible_default_ipv4.address }}
+          2. Check logs: tail -f /var/log/nginx/access.log
+          3. Test: curl http://localhost/
+
+    - name: Save deployment information
+      copy:
+        content: |
+          # Application Deployment Info
+          Application: {{ app_name }}
+          Version: {{ app_version }}
+          Deployed: {{ ansible_date_time.iso8601 }}
+          Server: {{ ansible_hostname }}
+          IP Address: {{ ansible_default_ipv4.address }}
+          Web Root: {{ web_root }}
+          Nginx Version: {{ nginx_version.stdout }}
+          Ansible Host: {{ ansible_host }}
+        dest: "{{ web_root }}/deployment.info"
+        owner: "{{ nginx_user }}"
+        group: "{{ nginx_group }}"
+        mode: '0644'
+
+  handlers:
+    - name: enable nginx
+      systemd:
+        name: nginx
+        state: started
+        enabled: yes
+
+    - name: reload nginx
+      systemd:
+        name: nginx
+        state: reloaded
+
+    - name: restart nginx
+      systemd:
+        name: nginx
+        state: restarted
+
+    - name: reload firewalld
+      systemd:
+        name: firewalld
+        state: reloaded

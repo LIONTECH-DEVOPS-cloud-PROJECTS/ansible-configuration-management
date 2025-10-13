@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Application - {{ app_name }}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 3rem;
+            border-radius: 20px;
+            text-align: center;
+            max-width: 800px;
+            margin: 2rem;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            color: #fff;
+        }
+        .server-info {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 1.5rem;
+            border-radius: 10px;
+            margin: 2rem 0;
+            text-align: left;
+        }
+        .info-item {
+            margin: 0.5rem 0;
+            font-family: monospace;
+        }
+        .status {
+            background: #00cc66;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 25px;
+            display: inline-block;
+            margin: 1rem 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Welcome to {{ app_name }}</h1>
+        <p style="font-size: 1.2rem; margin-bottom: 2rem;">Your simple application is successfully deployed!</p>
+        
+        <div class="status">✅ Application Status: Running</div>
+
+        <div class="server-info">
+            <h3>📊 Server Information</h3>
+            <div class="info-item"><strong>Hostname:</strong> {{ ansible_hostname }}</div>
+            <div class="info-item"><strong>IP Address:</strong> {{ ansible_default_ipv4.address }}</div>
+            <div class="info-item"><strong>OS:</strong> {{ ansible_distribution }} {{ ansible_distribution_version }}</div>
+            <div class="info-item"><strong>Deployed with:</strong> Ansible</div>
+            <div class="info-item"><strong>Web Server:</strong> Nginx</div>
+            <div class="info-item"><strong>Deployment Time:</strong> <span id="current-time">{{ ansible_date_time.iso8601 }}</span></div>
+        </div>
+
+        <div style="margin-top: 2rem; font-size: 0.9rem; opacity: 0.8;">
+            Powered by {{ app_name }} v{{ app_version }} | Deployed via Ansible Automation
+        </div>
+    </div>
+
+    <script>
+        // Update time every second
+        function updateTime() {
+            const now = new Date();
+            document.getElementById('current-time').textContent = now.toISOString();
+        }
+        setInterval(updateTime, 1000);
+        updateTime();
+    </script>
+</body>
+</html>
